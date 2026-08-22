@@ -174,6 +174,39 @@
     const t = setTimeout(() => ac.abort(), o.timeoutMs);
     return { signal: ac.signal, done: () => clearTimeout(t) };
   }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  /* Google's free tier allows on the order of fifteen requests a minute, and a
+     page of figures read back to back goes straight through that. A 429 is not
+     a failure, it is "wait" — so wait, honouring Retry-After when the server
+     sends one, and try again. Only when it keeps saying no is it worth
+     bothering the user. */
+  async function requestWithRetry(url, init, o) {
+    const max = o.retries === undefined ? 4 : o.retries;
+    let wait = o.retryBaseMs || 2000;
+    for (let attempt = 0; ; attempt++) {
+      const guard = withTimeout(o);
+      let res;
+      try {
+        res = await fetch(url, Object.assign({}, init, { signal: guard.signal }));
+      } catch (e) {
+        throw timeoutError(e, o.timeoutMs);
+      } finally {
+        guard.done();
+      }
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt >= max) return res;
+      let delay = wait;
+      try {
+        const ra = res.headers && res.headers.get && parseFloat(res.headers.get('retry-after'));
+        if (isFinite(ra) && ra > 0) delay = Math.min(ra * 1000, 60000);
+      } catch (e) { /* no headers on this response */ }
+      if (o.onRetry) o.onRetry({ attempt: attempt + 1, max, delayMs: delay, status: res.status });
+      await sleep(delay);
+      wait = Math.min(wait * 2, 32000);
+    }
+  }
+
   function timeoutError(e, ms) {
     if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) {
       return new Error('Gemini ไม่ตอบกลับภายใน ' + Math.round(ms / 1000) + ' วินาที ลองใหม่อีกครั้ง');
@@ -187,20 +220,11 @@
   async function findFigures(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const guard = withTimeout(o);
-    let res;
-    try {
-      res = await fetch(o.endpoint || ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(buildFindRequest(base64, o)),
-        signal: guard.signal
-      });
-    } catch (e) {
-      throw timeoutError(e, o.timeoutMs);
-    } finally {
-      guard.done();
-    }
+    const res = await requestWithRetry(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildFindRequest(base64, o))
+    }, o);
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -321,7 +345,11 @@
     const detail = (body && body.error && body.error.message) || '';
     if (status === 400 && /API key/i.test(detail)) return 'คีย์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
     if (status === 401 || status === 403) return 'คีย์ใช้ไม่ได้หรือยังไม่ได้เปิดใช้งาน Gemini API';
-    if (status === 429) return 'เรียกใช้บ่อยเกินโควตา รอสักครู่แล้วลองใหม่';
+    if (status === 429) {
+      return 'เกินโควตาของ Gemini (429) — บัญชีฟรีจำกัดราว 15 ครั้งต่อนาที ' +
+             'ลองใหม่อีกครั้งในหนึ่งนาที อ่านทีละไม่กี่รูป ' +
+             'หรือเปิดการเรียกเก็บเงินในโปรเจกต์ Google Cloud เพื่อเพิ่มโควตา';
+    }
     if (status >= 500) return 'เซิร์ฟเวอร์ของ Gemini ขัดข้อง ลองใหม่อีกครั้ง';
     return 'เรียก Gemini ไม่สำเร็จ (' + status + ')' + (detail ? ': ' + detail : '');
   }
@@ -329,22 +357,13 @@
   async function readFigure(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const guard = withTimeout(o);
-    let res;
-    try {
-      res = await fetch(o.endpoint || ENDPOINT, {
-        method: 'POST',
-        /* The key rides in a header, never in the URL, where it would end up in
-           logs and history. */
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(buildRequest(base64, o)),
-        signal: guard.signal
-      });
-    } catch (e) {
-      throw timeoutError(e, o.timeoutMs);
-    } finally {
-      guard.done();
-    }
+    const res = await requestWithRetry(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      /* The key rides in a header, never in the URL, where it would end up in
+         logs and history. */
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildRequest(base64, o))
+    }, o);
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -358,5 +377,6 @@
 
   AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
                  findFigures, buildFindRequest, parseFindResponse, toBoxes, timeoutError,
+                 requestWithRetry,
                  describeError, PROMPT, SCHEMA, FIND_PROMPT, FIND_SCHEMA, MODEL, ENDPOINT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

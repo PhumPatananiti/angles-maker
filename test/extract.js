@@ -141,6 +141,51 @@ console.log('\nthe call itself');
   try { await E.readFigure('QUJD', 'k', { timeoutMs: 5000 }); } catch (e) { timedOut = e.message; }
   check('readFigure surfaces the timeout rather than hanging', /ไม่ตอบกลับ/.test(timedOut), timedOut);
 
+  console.log('\nrate limiting');
+  {
+    /* A 429 is not a failure, it is "wait". The free tier hands them out
+       readily, so recovering without bothering the user is the whole point. */
+    let calls = 0;
+    const retries = [];
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls < 3) return { ok: false, status: 429, headers: { get: () => null },
+                              json: async () => ({ error: { message: 'quota' } }) };
+      return { ok: true, status: 200, headers: { get: () => null },
+               json: async () => ({ output: [{ type: 'text', text: JSON.stringify(READING) }] }) };
+    };
+    const fig = await E.readFigure('QUJD', 'k',
+      { retryBaseMs: 5, onRetry: i => retries.push(i.delayMs) });
+    check('a 429 is retried until it succeeds', !!fig && calls === 3,
+          calls + ' attempts, backing off ' + retries.join('ms, ') + 'ms');
+    check('the wait grows between attempts', retries.length === 2 && retries[1] > retries[0],
+          retries.join(' -> '));
+
+    calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return { ok: false, status: 429, headers: { get: () => '0.01' },
+               json: async () => ({ error: { message: 'quota' } }) };
+    };
+    let msg = '';
+    try { await E.readFigure('QUJD', 'k', { retryBaseMs: 5, retries: 2 }); }
+    catch (e) { msg = e.message; }
+    check('it gives up after the set number of tries', calls === 3, calls + ' attempts');
+    check('and then explains the free-tier limit and how to raise it',
+          /15 ครั้งต่อนาที/.test(msg) && /เรียกเก็บเงิน/.test(msg), msg.slice(0, 60) + '…');
+
+    calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls < 2) return { ok: false, status: 503, headers: { get: () => null },
+                              json: async () => ({}) };
+      return { ok: true, status: 200, headers: { get: () => null },
+               json: async () => ({ output: [{ type: 'text', text: JSON.stringify(READING) }] }) };
+    };
+    const fig2 = await E.readFigure('QUJD', 'k', { retryBaseMs: 5 });
+    check('a server error is retried too', !!fig2 && calls === 2);
+  }
+
   console.log('\n' + (failures ? failures + ' of ' + checks + ' checks FAILED'
                                : 'all ' + checks + ' checks passed'));
   process.exit(failures ? 1 : 0);

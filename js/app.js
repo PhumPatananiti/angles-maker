@@ -1120,6 +1120,29 @@
     return btoa(s);
   }
 
+  /* Google's free tier allows about fifteen requests a minute. Reading a page
+     of figures back to back sails past that, and a rejected request is worse
+     than a slow one — it still costs a call and returns nothing. So calls are
+     spaced from the outset rather than fired and then apologised for. */
+  const MIN_CALL_GAP_MS = 4200;
+  let lastCallAt = 0;
+  async function throttle(label) {
+    const wait = lastCallAt ? MIN_CALL_GAP_MS - (Date.now() - lastCallAt) : 0;
+    if (wait > 400) {
+      const until = Date.now() + wait;
+      while (Date.now() < until) {
+        status(label + ' — เว้นระยะ ' + Math.ceil((until - Date.now()) / 1000) +
+               ' วินาที ไม่ให้เกินโควตาบัญชีฟรี');
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+    lastCallAt = Date.now();
+  }
+
+  const waitNotice = what => info => status(
+    'Gemini ' + what + ' เกินโควตา — รอ ' + Math.round(info.delayMs / 1000) +
+    ' วินาทีแล้วลองใหม่ (ครั้งที่ ' + info.attempt + '/' + info.max + ')');
+
   async function readWithAI(page, box) {
     const key = getKey();
     if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
@@ -1129,7 +1152,9 @@
       if (!box.png) box.png = await renderFigure(page, box);
       /* The cleaned, deskewed crop is what the model sees — the same image that
          would otherwise have been pasted into Word. */
-      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key, { timeoutMs: 90000 });
+      await throttle('อ่านมุม');
+      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key,
+                                              { timeoutMs: 90000, onRetry: waitNotice('อ่านรูป') });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
@@ -1151,6 +1176,11 @@
     if (!getKey()) { toast('ใส่ Gemini API key ในขั้นที่ 1 ก่อน', 5000); goStep(1); return; }
     state.figIndex = 0;
     goStep(4);
+    if (list.length > 2) {
+      toast('บัญชีฟรีจำกัดราว 15 ครั้งต่อนาที จึงเว้นระยะระหว่างรูป ' +
+            list.length + ' รูปจะใช้เวลาราว ' +
+            Math.ceil(list.length * 5 / 10) * 10 + ' วินาที', 7000);
+    }
     for (let i = 0; i < list.length; i++) {
       status('กำลังอ่านมุม ' + (i + 1) + ' จาก ' + list.length + '…');
       state.figIndex = chosenBoxes().findIndex(x => x.box === list[i].box);
@@ -1189,8 +1219,9 @@
     status('กำลังให้ AI หารูปมุมในหน้านี้…');
     try {
       const d = page.deskewed;
+      await throttle('ค้นหารูป');
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-                                                 { width: d.w, height: d.h, timeoutMs: 90000 });
+        { width: d.w, height: d.h, timeoutMs: 90000, onRetry: waitNotice('ค้นหารูป') });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {

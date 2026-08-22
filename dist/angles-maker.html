@@ -2471,6 +2471,39 @@ a.btn { text-decoration: none; }
     const t = setTimeout(() => ac.abort(), o.timeoutMs);
     return { signal: ac.signal, done: () => clearTimeout(t) };
   }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  /* Google's free tier allows on the order of fifteen requests a minute, and a
+     page of figures read back to back goes straight through that. A 429 is not
+     a failure, it is "wait" — so wait, honouring Retry-After when the server
+     sends one, and try again. Only when it keeps saying no is it worth
+     bothering the user. */
+  async function requestWithRetry(url, init, o) {
+    const max = o.retries === undefined ? 4 : o.retries;
+    let wait = o.retryBaseMs || 2000;
+    for (let attempt = 0; ; attempt++) {
+      const guard = withTimeout(o);
+      let res;
+      try {
+        res = await fetch(url, Object.assign({}, init, { signal: guard.signal }));
+      } catch (e) {
+        throw timeoutError(e, o.timeoutMs);
+      } finally {
+        guard.done();
+      }
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt >= max) return res;
+      let delay = wait;
+      try {
+        const ra = res.headers && res.headers.get && parseFloat(res.headers.get('retry-after'));
+        if (isFinite(ra) && ra > 0) delay = Math.min(ra * 1000, 60000);
+      } catch (e) { /* no headers on this response */ }
+      if (o.onRetry) o.onRetry({ attempt: attempt + 1, max, delayMs: delay, status: res.status });
+      await sleep(delay);
+      wait = Math.min(wait * 2, 32000);
+    }
+  }
+
   function timeoutError(e, ms) {
     if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) {
       return new Error('Gemini ไม่ตอบกลับภายใน ' + Math.round(ms / 1000) + ' วินาที ลองใหม่อีกครั้ง');
@@ -2484,20 +2517,11 @@ a.btn { text-decoration: none; }
   async function findFigures(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const guard = withTimeout(o);
-    let res;
-    try {
-      res = await fetch(o.endpoint || ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(buildFindRequest(base64, o)),
-        signal: guard.signal
-      });
-    } catch (e) {
-      throw timeoutError(e, o.timeoutMs);
-    } finally {
-      guard.done();
-    }
+    const res = await requestWithRetry(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildFindRequest(base64, o))
+    }, o);
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -2618,7 +2642,11 @@ a.btn { text-decoration: none; }
     const detail = (body && body.error && body.error.message) || '';
     if (status === 400 && /API key/i.test(detail)) return 'คีย์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
     if (status === 401 || status === 403) return 'คีย์ใช้ไม่ได้หรือยังไม่ได้เปิดใช้งาน Gemini API';
-    if (status === 429) return 'เรียกใช้บ่อยเกินโควตา รอสักครู่แล้วลองใหม่';
+    if (status === 429) {
+      return 'เกินโควตาของ Gemini (429) — บัญชีฟรีจำกัดราว 15 ครั้งต่อนาที ' +
+             'ลองใหม่อีกครั้งในหนึ่งนาที อ่านทีละไม่กี่รูป ' +
+             'หรือเปิดการเรียกเก็บเงินในโปรเจกต์ Google Cloud เพื่อเพิ่มโควตา';
+    }
     if (status >= 500) return 'เซิร์ฟเวอร์ของ Gemini ขัดข้อง ลองใหม่อีกครั้ง';
     return 'เรียก Gemini ไม่สำเร็จ (' + status + ')' + (detail ? ': ' + detail : '');
   }
@@ -2626,22 +2654,13 @@ a.btn { text-decoration: none; }
   async function readFigure(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const guard = withTimeout(o);
-    let res;
-    try {
-      res = await fetch(o.endpoint || ENDPOINT, {
-        method: 'POST',
-        /* The key rides in a header, never in the URL, where it would end up in
-           logs and history. */
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(buildRequest(base64, o)),
-        signal: guard.signal
-      });
-    } catch (e) {
-      throw timeoutError(e, o.timeoutMs);
-    } finally {
-      guard.done();
-    }
+    const res = await requestWithRetry(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      /* The key rides in a header, never in the URL, where it would end up in
+         logs and history. */
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildRequest(base64, o))
+    }, o);
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -2655,6 +2674,7 @@ a.btn { text-decoration: none; }
 
   AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
                  findFigures, buildFindRequest, parseFindResponse, toBoxes, timeoutError,
+                 requestWithRetry,
                  describeError, PROMPT, SCHEMA, FIND_PROMPT, FIND_SCHEMA, MODEL, ENDPOINT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -3781,6 +3801,29 @@ a.btn { text-decoration: none; }
     return btoa(s);
   }
 
+  /* Google's free tier allows about fifteen requests a minute. Reading a page
+     of figures back to back sails past that, and a rejected request is worse
+     than a slow one — it still costs a call and returns nothing. So calls are
+     spaced from the outset rather than fired and then apologised for. */
+  const MIN_CALL_GAP_MS = 4200;
+  let lastCallAt = 0;
+  async function throttle(label) {
+    const wait = lastCallAt ? MIN_CALL_GAP_MS - (Date.now() - lastCallAt) : 0;
+    if (wait > 400) {
+      const until = Date.now() + wait;
+      while (Date.now() < until) {
+        status(label + ' — เว้นระยะ ' + Math.ceil((until - Date.now()) / 1000) +
+               ' วินาที ไม่ให้เกินโควตาบัญชีฟรี');
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+    lastCallAt = Date.now();
+  }
+
+  const waitNotice = what => info => status(
+    'Gemini ' + what + ' เกินโควตา — รอ ' + Math.round(info.delayMs / 1000) +
+    ' วินาทีแล้วลองใหม่ (ครั้งที่ ' + info.attempt + '/' + info.max + ')');
+
   async function readWithAI(page, box) {
     const key = getKey();
     if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
@@ -3790,7 +3833,9 @@ a.btn { text-decoration: none; }
       if (!box.png) box.png = await renderFigure(page, box);
       /* The cleaned, deskewed crop is what the model sees — the same image that
          would otherwise have been pasted into Word. */
-      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key, { timeoutMs: 90000 });
+      await throttle('อ่านมุม');
+      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key,
+                                              { timeoutMs: 90000, onRetry: waitNotice('อ่านรูป') });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
@@ -3812,6 +3857,11 @@ a.btn { text-decoration: none; }
     if (!getKey()) { toast('ใส่ Gemini API key ในขั้นที่ 1 ก่อน', 5000); goStep(1); return; }
     state.figIndex = 0;
     goStep(4);
+    if (list.length > 2) {
+      toast('บัญชีฟรีจำกัดราว 15 ครั้งต่อนาที จึงเว้นระยะระหว่างรูป ' +
+            list.length + ' รูปจะใช้เวลาราว ' +
+            Math.ceil(list.length * 5 / 10) * 10 + ' วินาที', 7000);
+    }
     for (let i = 0; i < list.length; i++) {
       status('กำลังอ่านมุม ' + (i + 1) + ' จาก ' + list.length + '…');
       state.figIndex = chosenBoxes().findIndex(x => x.box === list[i].box);
@@ -3850,8 +3900,9 @@ a.btn { text-decoration: none; }
     status('กำลังให้ AI หารูปมุมในหน้านี้…');
     try {
       const d = page.deskewed;
+      await throttle('ค้นหารูป');
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-                                                 { width: d.w, height: d.h, timeoutMs: 90000 });
+        { width: d.w, height: d.h, timeoutMs: 90000, onRetry: waitNotice('ค้นหารูป') });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {
