@@ -2309,11 +2309,11 @@ a.btn { text-decoration: none; }
   const DEFAULTS = {
     inkBelow: 140,          // the crop arrives cleaned: paper white, ink black
     thetaSteps: 360,        // half a degree
-    minLengthFrac: 0.22,    // of the crop's diagonal
-    gapTolerance: 8,        // px of white a stroke may jump (a crossing line, a label)
-    perpTolerance: 2.2,     // px either side of the ideal line that still counts as on it
+    minLengthFrac: 0.20,    // of the crop's diagonal
+    gapFrac: 0.020,         // of the diagonal: white a stroke may jump (a crossing line, a label)
+    perpFrac: 0.004,        // of the diagonal: how far off the ideal line still counts as on it
     mergeAngle: 7 * Math.PI / 180,
-    mergeDistance: 13,      // a hand-drawn stroke wobbles into several Hough peaks
+    mergeDistanceFrac: 0.022,  // a printed stroke wobbles into several Hough peaks
     collinearGap: 0.10,     // of the diagonal: two stretches of one stroke, rejoined
     parallelTolerance: 4 * Math.PI / 180,
     joinRadius: 0.045,      // of the diagonal — points closer than this are one point
@@ -2324,11 +2324,14 @@ a.btn { text-decoration: none; }
     arcMaxRadiusFrac: 0.30,
     arcMaxRadialSpread: 0.34,  // an arc keeps a near-constant distance from its vertex
     arcMinSweepDeg: 16,
-    arrowRadius: 13,        // px from a stroke's end within which a head is its own
-    arrowMinArea: 8,        // a head straddles the stroke, so removing the stroke splits it
-    arrowMinTotalArea: 26,  // the pieces are judged together
-    arrowMaxArea: 400,
-    arrowMinFill: 0.34      // a head is a solid wedge; an arc or a chevron is a thin curve
+    /* Heads were being missed on every real page: the thresholds were pixel
+       counts taken from 300px test drawings, and a scanned figure is twice
+       that across with heads four times the area. Everything scales now. */
+    arrowRadiusFrac: 0.045,   // of the diagonal, from the stroke's end
+    arrowMinAreaFrac: 0.00004,
+    arrowMinTotalAreaFrac: 0.00018,
+    arrowMaxAreaFrac: 0.006,
+    arrowMinFill: 0.30        // a head is a solid wedge; an arc or a chevron is a thin curve
   };
 
   function inkPoints(gray, w, h, o) {
@@ -2582,6 +2585,15 @@ a.btn { text-decoration: none; }
     const G = AM.geometry;
     const diag = Math.hypot(w, h);
     const minLen = o.minLengthFrac * diag;
+    /* Resolve every "fraction of the figure" into pixels once. A threshold in
+       bare pixels only ever suits the drawing it was tuned on. */
+    o.gapTolerance = Math.max(4, Math.round(o.gapFrac * diag));
+    o.perpTolerance = Math.max(1.5, o.perpFrac * diag);
+    o.mergeDistance = Math.max(5, o.mergeDistanceFrac * diag);
+    o.arrowRadius = Math.max(8, o.arrowRadiusFrac * diag);
+    o.arrowMinArea = Math.max(6, o.arrowMinAreaFrac * w * h);
+    o.arrowMinTotalArea = Math.max(20, o.arrowMinTotalAreaFrac * w * h);
+    o.arrowMaxArea = Math.max(200, o.arrowMaxAreaFrac * w * h);
 
     const pts = inkPoints(gray, w, h, o);
     if (pts.length < 40) return null;
@@ -2767,9 +2779,12 @@ a.btn { text-decoration: none; }
         return total >= o.arrowMinTotalArea && total <= o.arrowMaxArea;
       };
       const startHead = headAt(s.x1, s.y1), endHead = headAt(s.x2, s.y2);
-      if (startHead && endHead) { line.kind = 'line'; line.arrows = 'both'; }
-      else if (startHead) { line.kind = 'ray'; line.arrows = 'start'; }
-      else if (endHead) { line.kind = 'ray'; line.arrows = 'end'; }
+      /* Draw the head where the head is. Promoting the stroke to an infinite
+         line instead made every figure sprawl far past the extent it has on
+         the page, because the renderer then runs it to the edge of the canvas. */
+      if (startHead && endHead) line.arrows = 'both';
+      else if (startHead) line.arrows = 'start';
+      else if (endHead) line.arrows = 'end';
     }
 
     G.captureSigns(fig);

@@ -111,6 +111,11 @@ the figure, labels sitting on the strokes, bleed-through, a dark page edge, shad
 asserts that each figure is found, fully contained, and free of neighbouring content. It writes
 annotated pages to `test/out/` so failures can be looked at.
 
+`test/samples.js` runs the tracer over real photographed pages in `samples/` — screenshots of the
+app, so each one contains the exact crop the tracer was given. It writes `test/out/samples.html`,
+every original beside what was recovered from it, and holds each page to a recorded stroke count so
+a change cannot quietly make them worse. The pages themselves are not in the repository.
+
 `test/export.js` checks the export path: paper comes out white, ink comes out black, the PNG really
 carries 300 dpi, and the archive passes `unzip -t` and extracts byte-identical files.
 

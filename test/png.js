@@ -50,4 +50,60 @@ function drawBox(rgba, w, h, box, color, thickness) {
   }
 }
 
-module.exports = { encodeRGBA, fromGray, drawBox };
+/* A decoder, so photographs and screenshots can be fixtures rather than
+   something only a browser can open. Handles the 8-bit RGB and RGBA files that
+   screenshots and phone cameras produce; anything else is refused loudly. */
+function decode(buf) {
+  if (buf.readUInt32BE(0) !== 0x89504E47) throw new Error('not a PNG');
+  let i = 8, w = 0, h = 0, depth = 0, color = 0, interlace = 0;
+  const idat = [];
+  while (i + 8 <= buf.length) {
+    const len = buf.readUInt32BE(i);
+    const type = buf.toString('ascii', i + 4, i + 8);
+    const data = buf.subarray(i + 8, i + 8 + len);
+    if (type === 'IHDR') {
+      w = data.readUInt32BE(0); h = data.readUInt32BE(4);
+      depth = data[8]; color = data[9]; interlace = data[12];
+    } else if (type === 'IDAT') idat.push(data);
+    else if (type === 'IEND') break;
+    i += 12 + len;
+  }
+  if (depth !== 8) throw new Error('unsupported bit depth ' + depth);
+  if (interlace) throw new Error('interlaced PNG not supported');
+  const channels = color === 6 ? 4 : color === 2 ? 3 : color === 0 ? 1 : 0;
+  if (!channels) throw new Error('unsupported colour type ' + color);
+
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const stride = w * channels;
+  const out = Buffer.alloc(h * stride);
+  let pos = 0;
+  for (let y = 0; y < h; y++) {
+    const filter = raw[pos++];
+    const line = raw.subarray(pos, pos + stride);
+    pos += stride;
+    const cur = out.subarray(y * stride, (y + 1) * stride);
+    const prev = y ? out.subarray((y - 1) * stride, y * stride) : null;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= channels ? cur[x - channels] : 0;
+      const b = prev ? prev[x] : 0;
+      const c = prev && x >= channels ? prev[x - channels] : 0;
+      let v = line[x];
+      if (filter === 1) v += a;
+      else if (filter === 2) v += b;
+      else if (filter === 3) v += (a + b) >> 1;
+      else if (filter === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+      }
+      cur[x] = v & 255;
+    }
+  }
+  const gray = new Uint8Array(w * h);
+  for (let p2 = 0, n = 0; n < w * h; n++, p2 += channels) {
+    gray[n] = channels === 1 ? out[p2]
+            : (out[p2] * 77 + out[p2 + 1] * 151 + out[p2 + 2] * 28) >> 8;
+  }
+  return { width: w, height: h, gray, channels };
+}
+
+module.exports = { encodeRGBA, fromGray, drawBox, decode };

@@ -140,8 +140,10 @@ console.log('\narrowheads');
   head(30, 1); head(W - 30, -1);
   const fig = AM.trace.traceFigure(g, W, H, {});
   const line = fig && fig.lines[0];
-  check('a stroke with heads at both ends becomes a line with arrows',
-        !!line && line.kind === 'line' && line.arrows === 'both',
+  /* Arrows belong on the stroke's own ends. Promoting it to an infinite line
+     made real figures sprawl far past the extent they have on the page. */
+  check('a stroke with heads at both ends gets arrows, and keeps its length',
+        !!line && line.arrows === 'both' && line.kind === 'segment',
         line ? line.kind + '/' + line.arrows : 'no line found');
 }
 

@@ -6,3 +6,7 @@ build/
 dist/*.zip
 
 .DS_Store
+
+# The sample pages are the user's own book; the tests read them from here but
+# they are not ours to publish.
+samples/
