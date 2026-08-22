@@ -154,8 +154,14 @@ input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
 .fig .name { flex: 1; min-width: 0; font-size: 12.5px; }
 .fig .name input { width: 100%; border: 0; background: transparent; font: inherit; padding: 2px; }
 .fig .name input:focus { background: var(--bg); border-radius: 4px; outline: 1px solid var(--line); }
-.fig .dl { border: 0; background: transparent; padding: 4px 6px; font-size: 15px; color: var(--muted); }
-.fig .dl:hover { color: var(--accent); background: transparent; }
+.fig .dl {
+  border: 0; background: transparent; padding: 4px 8px; font-size: 15px;
+  color: var(--muted); text-decoration: none; flex: none; line-height: 1;
+  display: inline-block; border-radius: 6px;
+}
+a.dl { color: var(--accent); font-weight: 700; }
+a.dl:hover { background: var(--accent-soft); }
+.fig .dl.waiting { color: var(--line); letter-spacing: 1px; font-size: 11px; cursor: default; }
 .empty { color: var(--muted); font-size: 12.5px; padding: 10px 2px; }
 
 .toast {
@@ -167,7 +173,10 @@ input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
 /* Fingers need a bigger target than a mouse, and on a phone-sized canvas the
    eight handles of a box overlap into an unreadable cluster — keep the corners,
    which are enough to resize with, and drop the edge handles. */
+.touch-only { display: none; }
+
 @media (pointer: coarse) {
+  .touch-only { display: block; }
   .box .h { width: 15px; height: 15px; border-width: 2px; }
   .box .h.nw, .box .h.sw { left: -8px; }
   .box .h.ne, .box .h.se { right: -8px; }

@@ -157,6 +157,7 @@
     syncControls();
     renderPages();
     renderAll();
+    schedulePrepare(0);
     if (!page.boxes.length) {
       toast('ไม่พบรูปในหน้านี้ — ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการเพื่อเพิ่มเอง', 7000);
     }
@@ -218,7 +219,10 @@
   }
 
   function removePage(id) {
+    const gone = state.pages.find(p => p.id === id);
+    if (gone) for (const b of gone.boxes) invalidateBox(b);
     state.pages = state.pages.filter(p => p.id !== id);
+    updateZipButton();
     if (fullRes && fullRes.pageId === id) fullRes = null;
     if (state.activeId === id) state.activeId = state.pages.length ? state.pages[0].id : null;
     renderPages();
@@ -320,9 +324,23 @@
       input.onclick = ev => ev.stopPropagation();
       name.appendChild(input);
       row.appendChild(name);
-      const dl = el('button', 'dl', '↓');
-      dl.title = 'ดาวน์โหลดรูปนี้';
-      dl.onclick = ev => { ev.stopPropagation(); exportOne(page, b); };
+      let dl;
+      if (b.url) {
+        /* A real href, set before the tap. No await stands between the user's
+           finger and the download starting. */
+        dl = el('a', 'dl', '↓');
+        dl.href = b.url;
+        dl.download = AM.util.sanitizeName(nameFor(page, b), 'figure') + '.png';
+        dl.title = 'ดาวน์โหลดรูปนี้';
+        dl.onclick = ev => ev.stopPropagation();
+      } else {
+        dl = el('span', 'dl waiting', '·••');
+        dl.title = 'กำลังเตรียมไฟล์';
+        dl.onclick = ev => {
+          ev.stopPropagation();
+          toast('กำลังเตรียมไฟล์รูปนี้อยู่ รอสักครู่แล้วลองใหม่', 3000);
+        };
+      }
       row.appendChild(dl);
       row.onclick = () => { state.selected = b.id; renderBoxes(); renderList(); };
       list.appendChild(row);
@@ -357,6 +375,8 @@
     const page = active();
     if (!page || !state.undo.length) return;
     page.boxes = JSON.parse(state.undo.pop());
+    for (const b of page.boxes) { b.png = null; b.url = null; }
+    schedulePrepare();
     renderBoxes(); renderList(); renderPages();
   }
 
@@ -424,6 +444,8 @@
         if (box.w < 8 || box.h < 8) {
           page.boxes = page.boxes.filter(b => b !== box);
           state.undo.pop();
+        } else {
+          touchBox(box);
         }
         sortBoxes(page);
         renderBoxes(); renderList(); renderPages();
@@ -440,8 +462,9 @@
       if ((ev.key === 'Backspace' || ev.key === 'Delete') && box) {
         ev.preventDefault(); pushUndo();
         page.boxes = page.boxes.filter(b => b !== box);
+        invalidateBox(box);
         state.selected = null;
-        renderBoxes(); renderList(); renderPages();
+        renderBoxes(); renderList(); renderPages(); updateZipButton();
       } else if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z') {
         ev.preventDefault(); undo();
       } else if (box && ev.key.startsWith('Arrow')) {
@@ -452,11 +475,86 @@
         if (ev.key === 'ArrowUp') box.y -= step;
         if (ev.key === 'ArrowDown') box.y += step;
         box.manual = true;
+        touchBox(box);
         renderBoxes();
       } else if (ev.key === 'Escape') {
         state.selected = null; renderBoxes(); renderList();
       }
     });
+  }
+
+  /* ---------- preparing downloads ---------- */
+
+  /* Safari on iOS refuses to start a download from a handler that has already
+     awaited something: by the time the anchor is clicked the user gesture is
+     gone, and nothing happens — silently. So every figure is rendered to PNG
+     bytes in the background, and a control only becomes a real link once its
+     bytes exist. The tap itself then does no async work at all. */
+  let preparing = false, prepareTimer = 0;
+
+  function invalidateBox(box) {
+    if (box.url) URL.revokeObjectURL(box.url);
+    box.url = null;
+    box.png = null;
+  }
+  function invalidateAll() {
+    for (const p of state.pages) for (const b of p.boxes) invalidateBox(b);
+  }
+  function touchBox(box) {
+    invalidateBox(box);
+    schedulePrepare();
+  }
+
+  function countPending() {
+    let n = 0;
+    for (const p of state.pages) for (const b of p.boxes) if (!b.png) n++;
+    return n;
+  }
+
+  function updateZipButton() {
+    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    const pending = countPending();
+    const btn = $('#btn-zip');
+    if (!btn) return;
+    btn.disabled = !total || pending > 0;
+    btn.textContent = !total ? 'ยังไม่มีรูปให้บันทึก'
+      : pending ? 'กำลังเตรียมไฟล์ ' + (total - pending) + '/' + total + '…'
+      : 'ดาวน์โหลดทั้งหมด (.zip)';
+  }
+
+  function schedulePrepare(delay) {
+    clearTimeout(prepareTimer);
+    updateZipButton();
+    prepareTimer = setTimeout(prepareDownloads, delay === undefined ? 400 : delay);
+  }
+
+  async function prepareDownloads() {
+    if (preparing) return;
+    preparing = true;
+    try {
+      for (const page of state.pages) {
+        if (!page.ready) continue;
+        const need = page.boxes.filter(b => !b.png);
+        if (!need.length) continue;
+        for (const box of need) {
+          if (!page.boxes.includes(box)) continue;      // deleted while we worked
+          try {
+            box.png = await renderFigure(page, box);
+            box.url = URL.createObjectURL(new Blob([box.png], { type: 'image/png' }));
+          } catch (e) {
+            box.png = null;
+          }
+          updateZipButton();
+          if (page.id === state.activeId) renderList();
+          await new Promise(r => setTimeout(r, 0));     // let the page stay responsive
+        }
+        if (fullRes && fullRes.pageId === page.id && page.id !== state.activeId) fullRes = null;
+      }
+    } finally {
+      preparing = false;
+      updateZipButton();
+      if (countPending()) schedulePrepare(600);
+    }
   }
 
   /* ---------- export ---------- */
@@ -519,8 +617,8 @@
     return bytes;
   }
 
-  function saveBytes(bytes, filename) {
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+  function saveBytes(bytes, filename, mime) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
     const a = el('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a);
@@ -533,38 +631,32 @@
     status('กำลังบันทึก…');
     try {
       const bytes = await renderFigure(page, box);
-      saveBytes(bytes, AM.util.sanitizeName(nameFor(page, box), 'figure') + '.png');
+      saveBytes(bytes, AM.util.sanitizeName(nameFor(page, box), 'figure') + '.png', 'image/png');
     } catch (e) {
       toast('บันทึกรูปนี้ไม่สำเร็จ: ' + (e && e.message), 7000);
     }
     status(null);
   }
 
-  async function exportZip() {
-    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
-    if (!total) { toast('ยังไม่มีรูปให้บันทึก', 4000); return; }
+  /* Deliberately not async: the archive is built from bytes that are already
+     in hand, so the whole thing happens inside the tap that asked for it. */
+  function exportZip() {
     const entries = [];
     const taken = new Set();
-    let done = 0;
     for (const page of state.pages) {
-      if (!page.ready || !page.boxes.length) continue;
       for (const box of page.boxes) {
-        status('กำลังบันทึกรูปที่ ' + (++done) + ' จาก ' + total + '…');
-        await new Promise(r => setTimeout(r, 0));   // let the status paint
-        try {
-          const bytes = await renderFigure(page, box);
-          const name = AM.util.uniqueName(
-            AM.util.sanitizeName(nameFor(page, box), 'figure') + '.png', taken);
-          entries.push({ name, data: bytes });
-        } catch (e) {
-          toast('ข้ามไปหนึ่งรูป: ' + (e && e.message), 6000);
-        }
+        if (!box.png) continue;
+        const name = AM.util.uniqueName(
+          AM.util.sanitizeName(nameFor(page, box), 'figure') + '.png', taken);
+        entries.push({ name, data: box.png });
       }
-      if (fullRes && fullRes.pageId === page.id) fullRes = null;   // release between pages
     }
-    status(null);
-    if (!entries.length) return;
-    saveBytes(AM.zip.makeZip(entries), (state.settings.prefix || 'figures') + '-รูปทั้งหมด.zip');
+    if (!entries.length) { toast('ยังไม่มีรูปให้บันทึก', 4000); return; }
+    /* An ASCII archive name: a Thai one survives macOS and iOS but can arrive
+       as mojibake on Windows. The files inside keep their chosen names. */
+    const stem = AM.util.sanitizeName(state.settings.prefix || 'figures', 'figures')
+      .replace(/[^\x20-\x7E]/g, '') || 'figures';
+    saveBytes(AM.zip.makeZip(entries), stem + '-figures.zip', 'application/zip');
   }
 
   /* ---------- controls ---------- */
@@ -590,8 +682,9 @@
       const page = active();
       if (!page) return;
       pushUndo();
+      for (const b of page.boxes) invalidateBox(b);
       page.boxes = [];
-      renderBoxes(); renderList(); renderPages();
+      renderBoxes(); renderList(); renderPages(); updateZipButton();
     };
     $('#btn-zip').onclick = exportZip;
 
@@ -618,14 +711,21 @@
       processActive(true);
     };
 
-    $('#in-mode').onchange = ev => { state.settings.mode = ev.target.value; };
+    $('#in-mode').onchange = ev => {
+      state.settings.mode = ev.target.value;
+      invalidateAll(); schedulePrepare(); renderList();
+    };
     const width = $('#in-width');
     const showWidth = () => {
       $('#out-width').textContent = +width.value ? width.value + ' พิกเซล' : 'ขนาดเดิม';
     };
     width.oninput = () => { state.settings.width = +width.value; showWidth(); };
+    width.onchange = () => { invalidateAll(); schedulePrepare(); renderList(); };
     showWidth();
-    $('#in-bolder').onchange = ev => { state.settings.bolder = ev.target.checked; };
+    $('#in-bolder').onchange = ev => {
+      state.settings.bolder = ev.target.checked;
+      invalidateAll(); schedulePrepare(); renderList();
+    };
     $('#in-prefix').oninput = ev => {
       /* Strip only what a filesystem rejects. A \w class here would be ASCII-only
          and would quietly delete every Thai character the user typed. */
