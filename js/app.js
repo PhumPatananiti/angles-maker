@@ -489,7 +489,7 @@
       const b = el('button', 'btn primary sm', 'แปลงเลย');
       b.onclick = () => traceBox(page, box);
       bb.appendChild(b);
-      if (getKey()) {
+      if (getKey() && !state.aiExhausted) {
         const ai = el('button', 'btn ghost sm', 'ลองใช้ AI แทน');
         ai.onclick = () => readWithAI(page, box);
         bb.appendChild(ai);
@@ -532,7 +532,7 @@
       const again = el('button', 'btn ghost sm', 'แปลงใหม่');
       again.onclick = () => traceBox(page, box);
       row.appendChild(again);
-      if (getKey()) {
+      if (getKey() && !state.aiExhausted) {
         const ai = el('button', 'btn ghost sm', 'ลองใช้ AI แทน');
         ai.onclick = () => readWithAI(page, box);
         row.appendChild(ai);
@@ -1143,6 +1143,10 @@
      than a slow one — it still costs a call and returns nothing. So calls are
      spaced from the outset rather than fired and then apologised for. */
   const MIN_CALL_GAP_MS = 4200;
+  /* Two retries, not four. On a free key the daily allowance is twenty calls,
+     so a long retry ladder spends the user's minutes on a quota that will not
+     come back until tomorrow. */
+  const AI_RETRIES = 2;
   let lastCallAt = 0;
   async function throttle(label) {
     const wait = lastCallAt ? MIN_CALL_GAP_MS - (Date.now() - lastCallAt) : 0;
@@ -1175,12 +1179,18 @@
          would otherwise have been pasted into Word. */
       await throttle('อ่านมุม');
       const fig = await AM.extract.readFigure(bytesToBase64(box.png), key,
-                                              { timeoutMs: 90000, onRetry: waitNotice('อ่านรูป'),
+                                              { timeoutMs: 90000, retries: AI_RETRIES,
+                                                onRetry: waitNotice('อ่านรูป'),
                                                 onCountdown: waitCountdown('อ่านมุม') });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
     } catch (e) {
+      if (e && e.status === 429) {
+        state.aiExhausted = true;
+        toast('โควตา Gemini ของวันนี้หมดแล้ว — ใช้ปุ่ม “แปลงเลย” ซึ่งทำงานในเครื่อง ' +
+              'ไม่จำกัดจำนวน', 9000);
+      }
       box.lastError = { message: (e && e.message) || String(e), raw: (e && e.raw) || '',
                         status: e && e.status };
       toast('อ่านรูป ' + nameFor(page, box) + ' ไม่สำเร็จ: ' + (e && e.message), 9000);
@@ -1284,8 +1294,8 @@
       const d = page.deskewed;
       await throttle('ค้นหารูป');
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-        { width: d.w, height: d.h, timeoutMs: 90000, onRetry: waitNotice('ค้นหารูป'),
-          onCountdown: waitCountdown('ค้นหารูป') });
+        { width: d.w, height: d.h, timeoutMs: 90000, retries: AI_RETRIES,
+          onRetry: waitNotice('ค้นหารูป'), onCountdown: waitCountdown('ค้นหารูป') });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {

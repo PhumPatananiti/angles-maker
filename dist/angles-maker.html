@@ -2312,18 +2312,23 @@ a.btn { text-decoration: none; }
     minLengthFrac: 0.22,    // of the crop's diagonal
     gapTolerance: 8,        // px of white a stroke may jump (a crossing line, a label)
     perpTolerance: 2.2,     // px either side of the ideal line that still counts as on it
-    mergeAngle: 4 * Math.PI / 180,
-    mergeDistance: 7,
-    parallelTolerance: 3.5 * Math.PI / 180,
-    joinRadius: 9,          // points closer than this are the same point
+    mergeAngle: 7 * Math.PI / 180,
+    mergeDistance: 13,      // a hand-drawn stroke wobbles into several Hough peaks
+    collinearGap: 0.10,     // of the diagonal: two stretches of one stroke, rejoined
+    parallelTolerance: 4 * Math.PI / 180,
+    joinRadius: 0.045,      // of the diagonal — points closer than this are one point
+    minAngleDeg: 12,        // below this two strokes are the same direction, not an angle
     maxLines: 14,
     lineClear: 3.2,         // px: ink further than this from every stroke is "something else"
     arcMinRadiusFrac: 0.04, // of the crop diagonal
     arcMaxRadiusFrac: 0.30,
     arcMaxRadialSpread: 0.34,  // an arc keeps a near-constant distance from its vertex
     arcMinSweepDeg: 16,
-    arrowRadius: 16,        // px from a stroke's end within which a head is its own
-    arrowMaxArea: 400
+    arrowRadius: 13,        // px from a stroke's end within which a head is its own
+    arrowMinArea: 8,        // a head straddles the stroke, so removing the stroke splits it
+    arrowMinTotalArea: 26,  // the pieces are judged together
+    arrowMaxArea: 400,
+    arrowMinFill: 0.34      // a head is a solid wedge; an arc or a chevron is a thin curve
   };
 
   function inkPoints(gray, w, h, o) {
@@ -2446,6 +2451,42 @@ a.btn { text-decoration: none; }
     return kept;
   }
 
+  /* One wobbly stroke can survive as two collinear pieces with a gap between
+     them. Rejoin those, or the figure gains lines it never had and an "angle"
+     of 175 degrees between two halves of the same line. */
+  function joinCollinear(segs, o, diag) {
+    const out = segs.slice();
+    let merged = true;
+    while (merged) {
+      merged = false;
+      outer:
+      for (let i = 0; i < out.length; i++) {
+        for (let j = i + 1; j < out.length; j++) {
+          const a = out[i], b = out[j];
+          if (angleDiff(a.theta, b.theta) > o.mergeAngle) continue;
+          const mx = (b.x1 + b.x2) / 2, my = (b.y1 + b.y2) / 2;
+          if (Math.abs(mx * Math.cos(a.theta) + my * Math.sin(a.theta) - a.rho) > o.mergeDistance) continue;
+          const ends = [[a.x1, a.y1], [a.x2, a.y2]], other = [[b.x1, b.y1], [b.x2, b.y2]];
+          let gap = Infinity;
+          for (const e of ends) for (const f of other) gap = Math.min(gap, Math.hypot(e[0] - f[0], e[1] - f[1]));
+          if (gap > o.collinearGap * diag) continue;
+          const all = ends.concat(other);
+          let best = null, bestD = -1;
+          for (let p = 0; p < all.length; p++) for (let q = p + 1; q < all.length; q++) {
+            const d = Math.hypot(all[p][0] - all[q][0], all[p][1] - all[q][1]);
+            if (d > bestD) { bestD = d; best = [all[p], all[q]]; }
+          }
+          out.splice(j, 1);
+          out[i] = { x1: best[0][0], y1: best[0][1], x2: best[1][0], y2: best[1][1],
+                     theta: a.theta, rho: a.rho, length: bestD };
+          merged = true;
+          break outer;
+        }
+      }
+    }
+    return out;
+  }
+
   function intersect(a, b) {
     const d = Math.cos(a.theta) * Math.sin(b.theta) - Math.sin(a.theta) * Math.cos(b.theta);
     if (Math.abs(d) < 1e-9) return null;
@@ -2552,15 +2593,16 @@ a.btn { text-decoration: none; }
       const rho = pk.r - H.diag;
       raw.push.apply(raw, segmentsOnLine(gray, w, h, theta, rho, o, minLen));
     }
-    const segs = mergeSegments(raw, o);
+    const segs = joinCollinear(mergeSegments(raw, o), o, diag);
     if (!segs.length) return null;
 
     /* Points: every crossing, plus the ends of each stroke. Anything closer
        together than joinRadius is one point, not two. */
     const points = [];
+    const joinR = o.joinRadius < 1 ? o.joinRadius * diag : o.joinRadius;
     const addPoint = p => {
       for (const q of points) {
-        if (Math.hypot(q.x - p.x, q.y - p.y) < o.joinRadius) return q;
+        if (Math.hypot(q.x - p.x, q.y - p.y) < joinR) return q;
       }
       const q = { x: p.x, y: p.y, id: null };
       points.push(q);
@@ -2630,6 +2672,13 @@ a.btn { text-decoration: none; }
        not make. */
     const parts = residual(gray, w, h, segs, o);
     const used = new Set();
+    /* Flag anything arc-shaped about any crossing, so the arrowhead pass can
+       never mistake one for a head even if no angle ended up using it. */
+    for (const part of parts) {
+      for (const c of crossings) {
+        if (arcAt(part, c.point.x, c.point.y, o, diag)) { part.isArc = true; break; }
+      }
+    }
 
     /* A point far enough along a line from the vertex to name a direction. */
     const rayTowards = (line, vertexId, dirX, dirY) => {
@@ -2683,6 +2732,12 @@ a.btn { text-decoration: none; }
       const from = rayTowards(A, V.id, pick.a.x, pick.a.y);
       const to = rayTowards(B, V.id, pick.b.x, pick.b.y);
       if (!from || !to || from.id === V.id || to.id === V.id) continue;
+      /* Two nearly-collinear strokes are not an angle worth offering; 175
+         degrees is a straight line with a kink, and filling it in means
+         nothing. */
+      const spread = Math.abs(G.signedAngle(
+        { x: V.x, y: V.y }, { x: from.x, y: from.y }, { x: to.x, y: to.y })) * 180 / Math.PI;
+      if (spread < o.minAngleDeg || spread > 180 - o.minAngleDeg) continue;
       fig.angles.push({ vertex: V.id, from: from.id, to: to.id, label: '',
                         fromArc: !!arc });
     }
@@ -2693,10 +2748,25 @@ a.btn { text-decoration: none; }
       const line = G.lineById(fig, 'l' + i);
       if (!line) continue;
       const s = segs[i];
-      const headNear = (x, y) => parts.some(p => !used.has(p) &&
-        p.comp.area <= o.arrowMaxArea &&
-        Math.hypot((p.comp.x0 + p.comp.x1) / 2 - x, (p.comp.y0 + p.comp.y1) / 2 - y) <= o.arrowRadius);
-      const startHead = headNear(s.x1, s.y1), endHead = headNear(s.x2, s.y2);
+      /* An arrowhead is a small SOLID wedge sitting at the end of a stroke.
+         An angle arc and a parallel-marker chevron are thin curves, and they
+         also sit near where strokes meet — reading either as a head promotes a
+         short segment to a line that then shoots off the page, which is what
+         happened to a zig-zag figure. Fill separates them. */
+      /* Removing the stroke cuts a head into an upper and a lower wedge, so the
+         pieces around one end are weighed together rather than each on its own. */
+      const headAt = (x, y) => {
+        let total = 0;
+        for (const p of parts) {
+          if (used.has(p) || p.isArc) continue;
+          if (p.comp.area < o.arrowMinArea || p.comp.area > o.arrowMaxArea) continue;
+          if (p.comp.fill < o.arrowMinFill) continue;
+          const cx = (p.comp.x0 + p.comp.x1) / 2, cy = (p.comp.y0 + p.comp.y1) / 2;
+          if (Math.hypot(cx - x, cy - y) <= o.arrowRadius) total += p.comp.area;
+        }
+        return total >= o.arrowMinTotalArea && total <= o.arrowMaxArea;
+      };
+      const startHead = headAt(s.x1, s.y1), endHead = headAt(s.x2, s.y2);
       if (startHead && endHead) { line.kind = 'line'; line.arrows = 'both'; }
       else if (startHead) { line.kind = 'ray'; line.arrows = 'start'; }
       else if (endHead) { line.kind = 'ray'; line.arrows = 'end'; }
@@ -3608,7 +3678,7 @@ a.btn { text-decoration: none; }
       const b = el('button', 'btn primary sm', 'แปลงเลย');
       b.onclick = () => traceBox(page, box);
       bb.appendChild(b);
-      if (getKey()) {
+      if (getKey() && !state.aiExhausted) {
         const ai = el('button', 'btn ghost sm', 'ลองใช้ AI แทน');
         ai.onclick = () => readWithAI(page, box);
         bb.appendChild(ai);
@@ -3651,7 +3721,7 @@ a.btn { text-decoration: none; }
       const again = el('button', 'btn ghost sm', 'แปลงใหม่');
       again.onclick = () => traceBox(page, box);
       row.appendChild(again);
-      if (getKey()) {
+      if (getKey() && !state.aiExhausted) {
         const ai = el('button', 'btn ghost sm', 'ลองใช้ AI แทน');
         ai.onclick = () => readWithAI(page, box);
         row.appendChild(ai);
@@ -4262,6 +4332,10 @@ a.btn { text-decoration: none; }
      than a slow one — it still costs a call and returns nothing. So calls are
      spaced from the outset rather than fired and then apologised for. */
   const MIN_CALL_GAP_MS = 4200;
+  /* Two retries, not four. On a free key the daily allowance is twenty calls,
+     so a long retry ladder spends the user's minutes on a quota that will not
+     come back until tomorrow. */
+  const AI_RETRIES = 2;
   let lastCallAt = 0;
   async function throttle(label) {
     const wait = lastCallAt ? MIN_CALL_GAP_MS - (Date.now() - lastCallAt) : 0;
@@ -4294,12 +4368,18 @@ a.btn { text-decoration: none; }
          would otherwise have been pasted into Word. */
       await throttle('อ่านมุม');
       const fig = await AM.extract.readFigure(bytesToBase64(box.png), key,
-                                              { timeoutMs: 90000, onRetry: waitNotice('อ่านรูป'),
+                                              { timeoutMs: 90000, retries: AI_RETRIES,
+                                                onRetry: waitNotice('อ่านรูป'),
                                                 onCountdown: waitCountdown('อ่านมุม') });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
     } catch (e) {
+      if (e && e.status === 429) {
+        state.aiExhausted = true;
+        toast('โควตา Gemini ของวันนี้หมดแล้ว — ใช้ปุ่ม “แปลงเลย” ซึ่งทำงานในเครื่อง ' +
+              'ไม่จำกัดจำนวน', 9000);
+      }
       box.lastError = { message: (e && e.message) || String(e), raw: (e && e.raw) || '',
                         status: e && e.status };
       toast('อ่านรูป ' + nameFor(page, box) + ' ไม่สำเร็จ: ' + (e && e.message), 9000);
@@ -4403,8 +4483,8 @@ a.btn { text-decoration: none; }
       const d = page.deskewed;
       await throttle('ค้นหารูป');
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-        { width: d.w, height: d.h, timeoutMs: 90000, onRetry: waitNotice('ค้นหารูป'),
-          onCountdown: waitCountdown('ค้นหารูป') });
+        { width: d.w, height: d.h, timeoutMs: 90000, retries: AI_RETRIES,
+          onRetry: waitNotice('ค้นหารูป'), onCountdown: waitCountdown('ค้นหารูป') });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {
