@@ -164,15 +164,43 @@
     return AM.detect ? AM.detect.readingOrder(out) : out;
   }
 
+  /* A request that never answers is worse than one that fails: the interface
+     sits on a spinner with nothing to act on. */
+  function withTimeout(o) {
+    if (o.signal || !o.timeoutMs || typeof AbortController === 'undefined') {
+      return { signal: o.signal, done: () => {} };
+    }
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), o.timeoutMs);
+    return { signal: ac.signal, done: () => clearTimeout(t) };
+  }
+  function timeoutError(e, ms) {
+    if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) {
+      return new Error('Gemini ไม่ตอบกลับภายใน ' + Math.round(ms / 1000) + ' วินาที ลองใหม่อีกครั้ง');
+    }
+    if (e instanceof TypeError) {
+      return new Error('ต่ออินเทอร์เน็ตไปยัง Gemini ไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');
+    }
+    return e;
+  }
+
   async function findFigures(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const res = await fetch(o.endpoint || ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildFindRequest(base64, o)),
-      signal: o.signal
-    });
+    const guard = withTimeout(o);
+    let res;
+    try {
+      res = await fetch(o.endpoint || ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(buildFindRequest(base64, o)),
+        signal: guard.signal
+      });
+    } catch (e) {
+      throw timeoutError(e, o.timeoutMs);
+    } finally {
+      guard.done();
+    }
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -301,14 +329,22 @@
   async function readFigure(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const res = await fetch(o.endpoint || ENDPOINT, {
-      method: 'POST',
-      /* The key rides in a header, never in the URL, where it would end up in
-         logs and history. */
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildRequest(base64, o)),
-      signal: o.signal
-    });
+    const guard = withTimeout(o);
+    let res;
+    try {
+      res = await fetch(o.endpoint || ENDPOINT, {
+        method: 'POST',
+        /* The key rides in a header, never in the URL, where it would end up in
+           logs and history. */
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(buildRequest(base64, o)),
+        signal: guard.signal
+      });
+    } catch (e) {
+      throw timeoutError(e, o.timeoutMs);
+    } finally {
+      guard.done();
+    }
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -321,6 +357,6 @@
   }
 
   AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
-                 findFigures, buildFindRequest, parseFindResponse, toBoxes,
+                 findFigures, buildFindRequest, parseFindResponse, toBoxes, timeoutError,
                  describeError, PROMPT, SCHEMA, FIND_PROMPT, FIND_SCHEMA, MODEL, ENDPOINT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

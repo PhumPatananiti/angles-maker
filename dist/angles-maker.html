@@ -2451,15 +2451,43 @@ a.btn { text-decoration: none; }
     return AM.detect ? AM.detect.readingOrder(out) : out;
   }
 
+  /* A request that never answers is worse than one that fails: the interface
+     sits on a spinner with nothing to act on. */
+  function withTimeout(o) {
+    if (o.signal || !o.timeoutMs || typeof AbortController === 'undefined') {
+      return { signal: o.signal, done: () => {} };
+    }
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), o.timeoutMs);
+    return { signal: ac.signal, done: () => clearTimeout(t) };
+  }
+  function timeoutError(e, ms) {
+    if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) {
+      return new Error('Gemini ไม่ตอบกลับภายใน ' + Math.round(ms / 1000) + ' วินาที ลองใหม่อีกครั้ง');
+    }
+    if (e instanceof TypeError) {
+      return new Error('ต่ออินเทอร์เน็ตไปยัง Gemini ไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');
+    }
+    return e;
+  }
+
   async function findFigures(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const res = await fetch(o.endpoint || ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildFindRequest(base64, o)),
-      signal: o.signal
-    });
+    const guard = withTimeout(o);
+    let res;
+    try {
+      res = await fetch(o.endpoint || ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(buildFindRequest(base64, o)),
+        signal: guard.signal
+      });
+    } catch (e) {
+      throw timeoutError(e, o.timeoutMs);
+    } finally {
+      guard.done();
+    }
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -2588,14 +2616,22 @@ a.btn { text-decoration: none; }
   async function readFigure(base64, apiKey, options) {
     if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
     const o = options || {};
-    const res = await fetch(o.endpoint || ENDPOINT, {
-      method: 'POST',
-      /* The key rides in a header, never in the URL, where it would end up in
-         logs and history. */
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildRequest(base64, o)),
-      signal: o.signal
-    });
+    const guard = withTimeout(o);
+    let res;
+    try {
+      res = await fetch(o.endpoint || ENDPOINT, {
+        method: 'POST',
+        /* The key rides in a header, never in the URL, where it would end up in
+           logs and history. */
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(buildRequest(base64, o)),
+        signal: guard.signal
+      });
+    } catch (e) {
+      throw timeoutError(e, o.timeoutMs);
+    } finally {
+      guard.done();
+    }
     let body = null;
     try { body = await res.json(); } catch (e) { body = null; }
     if (!res.ok) {
@@ -2608,7 +2644,7 @@ a.btn { text-decoration: none; }
   }
 
   AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
-                 findFigures, buildFindRequest, parseFindResponse, toBoxes,
+                 findFigures, buildFindRequest, parseFindResponse, toBoxes, timeoutError,
                  describeError, PROMPT, SCHEMA, FIND_PROMPT, FIND_SCHEMA, MODEL, ENDPOINT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -3372,8 +3408,24 @@ a.btn { text-decoration: none; }
   }
 
   /* Background PNG preparation pokes this after every figure; only the steps
-     that show thumbnails need to hear about it, and never the editor mid-drag. */
-  const renderList = () => { if (state.step === 3 || state.step === 5) renderStep(); };
+     that show thumbnails need to hear about it, and never the editor mid-drag.
+     The action bar always hears about it — it reports how many figures there
+     are, and it was going stale. */
+  const renderList = () => {
+    if (state.step === 3 || state.step === 5) renderStep();
+    else renderActions();
+  };
+
+  /* Anything that adds, removes, moves or resizes a box goes through here.
+     Forgetting the action bar is what left "ยังไม่พบรูป" on screen next to
+     three boxes the user had just drawn. */
+  function boxesChanged(page) {
+    if (page) sortBoxes(page);
+    renderBoxes();
+    renderPages();
+    renderActions();
+    if (state.step === 3 || state.step === 5) renderStep();
+  }
 
   /* Previews come from the analysis-scale page, so nothing at full resolution
      has to be decoded just to draw a thumbnail. */
@@ -3405,7 +3457,7 @@ a.btn { text-decoration: none; }
     page.boxes = JSON.parse(state.undo.pop());
     for (const b of page.boxes) { b.png = null; b.url = null; }
     schedulePrepare();
-    renderBoxes(); renderList(); renderPages();
+    boxesChanged(page);
   }
 
   function overlayPoint(ev) {
@@ -3427,7 +3479,9 @@ a.btn { text-decoration: none; }
       const start = overlayPoint(ev);
       const boxNode = ev.target.closest('.box');
       const handle = ev.target.dataset ? ev.target.dataset.handle : null;
-      ov.setPointerCapture(ev.pointerId);
+      /* Capture is a nicety; if the browser refuses it the drag must still
+         work, rather than the whole handler aborting and no box appearing. */
+      try { ov.setPointerCapture(ev.pointerId); } catch (e) { /* not fatal */ }
       ev.preventDefault();
       pushUndo();
 
@@ -3476,8 +3530,7 @@ a.btn { text-decoration: none; }
         } else {
           touchBox(box);
         }
-        sortBoxes(page);
-        renderBoxes(); renderList(); renderPages();
+        boxesChanged(page);
       };
       ov.addEventListener('pointermove', move);
       ov.addEventListener('pointerup', up);
@@ -3493,7 +3546,7 @@ a.btn { text-decoration: none; }
         page.boxes = page.boxes.filter(b => b !== box);
         invalidateBox(box);
         state.selected = null;
-        renderBoxes(); renderList(); renderPages(); updateZipButton();
+        boxesChanged(page); updateZipButton();
       } else if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z') {
         ev.preventDefault(); undo();
       } else if (box && ev.key.startsWith('Arrow')) {
@@ -3726,7 +3779,7 @@ a.btn { text-decoration: none; }
       if (!box.png) box.png = await renderFigure(page, box);
       /* The cleaned, deskewed crop is what the model sees — the same image that
          would otherwise have been pasted into Word. */
-      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
+      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key, { timeoutMs: 90000 });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
@@ -3787,7 +3840,7 @@ a.btn { text-decoration: none; }
     try {
       const d = page.deskewed;
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-                                                 { width: d.w, height: d.h });
+                                                 { width: d.w, height: d.h, timeoutMs: 90000 });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {

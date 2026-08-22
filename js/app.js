@@ -757,8 +757,24 @@
   }
 
   /* Background PNG preparation pokes this after every figure; only the steps
-     that show thumbnails need to hear about it, and never the editor mid-drag. */
-  const renderList = () => { if (state.step === 3 || state.step === 5) renderStep(); };
+     that show thumbnails need to hear about it, and never the editor mid-drag.
+     The action bar always hears about it — it reports how many figures there
+     are, and it was going stale. */
+  const renderList = () => {
+    if (state.step === 3 || state.step === 5) renderStep();
+    else renderActions();
+  };
+
+  /* Anything that adds, removes, moves or resizes a box goes through here.
+     Forgetting the action bar is what left "ยังไม่พบรูป" on screen next to
+     three boxes the user had just drawn. */
+  function boxesChanged(page) {
+    if (page) sortBoxes(page);
+    renderBoxes();
+    renderPages();
+    renderActions();
+    if (state.step === 3 || state.step === 5) renderStep();
+  }
 
   /* Previews come from the analysis-scale page, so nothing at full resolution
      has to be decoded just to draw a thumbnail. */
@@ -790,7 +806,7 @@
     page.boxes = JSON.parse(state.undo.pop());
     for (const b of page.boxes) { b.png = null; b.url = null; }
     schedulePrepare();
-    renderBoxes(); renderList(); renderPages();
+    boxesChanged(page);
   }
 
   function overlayPoint(ev) {
@@ -812,7 +828,9 @@
       const start = overlayPoint(ev);
       const boxNode = ev.target.closest('.box');
       const handle = ev.target.dataset ? ev.target.dataset.handle : null;
-      ov.setPointerCapture(ev.pointerId);
+      /* Capture is a nicety; if the browser refuses it the drag must still
+         work, rather than the whole handler aborting and no box appearing. */
+      try { ov.setPointerCapture(ev.pointerId); } catch (e) { /* not fatal */ }
       ev.preventDefault();
       pushUndo();
 
@@ -861,8 +879,7 @@
         } else {
           touchBox(box);
         }
-        sortBoxes(page);
-        renderBoxes(); renderList(); renderPages();
+        boxesChanged(page);
       };
       ov.addEventListener('pointermove', move);
       ov.addEventListener('pointerup', up);
@@ -878,7 +895,7 @@
         page.boxes = page.boxes.filter(b => b !== box);
         invalidateBox(box);
         state.selected = null;
-        renderBoxes(); renderList(); renderPages(); updateZipButton();
+        boxesChanged(page); updateZipButton();
       } else if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z') {
         ev.preventDefault(); undo();
       } else if (box && ev.key.startsWith('Arrow')) {
@@ -1111,7 +1128,7 @@
       if (!box.png) box.png = await renderFigure(page, box);
       /* The cleaned, deskewed crop is what the model sees — the same image that
          would otherwise have been pasted into Word. */
-      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
+      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key, { timeoutMs: 90000 });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
@@ -1172,7 +1189,7 @@
     try {
       const d = page.deskewed;
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-                                                 { width: d.w, height: d.h });
+                                                 { width: d.w, height: d.h, timeoutMs: 90000 });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {

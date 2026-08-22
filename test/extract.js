@@ -125,6 +125,22 @@ console.log('\nthe call itself');
   try { await E.readFigure('QUJD', ''); } catch (e) { missing = e.message; }
   check('a missing key is caught before any request', /API key/.test(missing), missing);
 
+  /* A request that never answers leaves the interface on a spinner with
+     nothing to act on, which is worse than a plain failure. */
+  const aborted = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+  check('a stalled request is reported as a timeout, with the limit named',
+        /ไม่ตอบกลับภายใน 90 วินาที/.test(E.timeoutError(aborted, 90000).message),
+        E.timeoutError(aborted, 90000).message);
+  check('a dead connection is reported as a connection problem',
+        /ต่ออินเทอร์เน็ต/.test(E.timeoutError(new TypeError('Failed to fetch'), 90000).message));
+  const real = new Error('something else');
+  check('any other error is passed through untouched', E.timeoutError(real, 90000) === real);
+
+  globalThis.fetch = async () => { throw Object.assign(new Error('aborted'), { name: 'AbortError' }); };
+  let timedOut = '';
+  try { await E.readFigure('QUJD', 'k', { timeoutMs: 5000 }); } catch (e) { timedOut = e.message; }
+  check('readFigure surfaces the timeout rather than hanging', /ไม่ตอบกลับ/.test(timedOut), timedOut);
+
   console.log('\n' + (failures ? failures + ' of ' + checks + ' checks FAILED'
                                : 'all ' + checks + ' checks passed'));
   process.exit(failures ? 1 : 0);
