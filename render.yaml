@@ -19,3 +19,12 @@ services:
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
+      # The whole app is one HTML file. Letting a browser hold on to a cached
+      # copy means a user runs last week's code and reports bugs that were
+      # fixed days ago — which is exactly what happened. Always revalidate.
+      - path: /*.html
+        name: Cache-Control
+        value: no-cache, must-revalidate
+      - path: /
+        name: Cache-Control
+        value: no-cache, must-revalidate

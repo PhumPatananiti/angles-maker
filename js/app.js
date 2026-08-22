@@ -307,7 +307,7 @@
       const unread = state.pages.reduce((k, p) => k + p.boxes.filter(b => b.selected !== false && !b.figure).length, 0);
       enabled = chosen > 0;
       text = !chosen ? 'เลือกอย่างน้อย 1 รูป'
-           : unread ? 'อ่านมุม ' + unread + ' รูปด้วย AI' : 'ถัดไป: ปรับแต่ง';
+           : unread ? 'แปลงเป็นเส้นและมุม (' + unread + ' รูป)' : 'ถัดไป: ปรับแต่ง';
     } else if (state.step === 4) {
       const list = chosenBoxes();
       text = state.figIndex < list.length - 1 ? 'รูปถัดไป' : 'ถัดไป: ส่งออก';
@@ -482,13 +482,18 @@
       attachPointDrag(holder, page, box);
       built.appendChild(holder);
     } else {
-      built.appendChild(el('figcaption', null, 'ยังไม่ได้อ่าน'));
-      if (box.lastError) built.appendChild(errorNotice(box.lastError, 'AI อ่านรูปนี้ไม่สำเร็จ:'));
+      built.appendChild(el('figcaption', null, 'ยังไม่ได้แปลง'));
+      if (box.lastError) built.appendChild(errorNotice(box.lastError, 'แปลงรูปนี้ไม่สำเร็จ:'));
       const bb = el('div', 'busy-block');
-      bb.appendChild(el('span', null, getKey() ? 'รูปนี้ยังไม่ได้ให้ AI อ่าน' : 'ต้องใส่ Gemini API key ในขั้นที่ 1 ก่อน'));
-      const b = el('button', 'btn primary sm', 'อ่านรูปนี้ด้วย AI');
-      b.onclick = () => readWithAI(page, box);
+      bb.appendChild(el('span', null, 'แปลงรูปนี้เป็นเส้นและมุมที่แก้ค่าได้'));
+      const b = el('button', 'btn primary sm', 'แปลงเลย');
+      b.onclick = () => traceBox(page, box);
       bb.appendChild(b);
+      if (getKey()) {
+        const ai = el('button', 'btn ghost sm', 'ลองใช้ AI แทน');
+        ai.onclick = () => readWithAI(page, box);
+        bb.appendChild(ai);
+      }
       built.appendChild(bb);
     }
     two.appendChild(built);
@@ -524,9 +529,14 @@
         body.appendChild(n);
       }
       const row = el('div', 'bar-row');
-      const again = el('button', 'btn ghost sm', 'ให้ AI อ่านใหม่');
-      again.onclick = () => readWithAI(page, box);
+      const again = el('button', 'btn ghost sm', 'แปลงใหม่');
+      again.onclick = () => traceBox(page, box);
       row.appendChild(again);
+      if (getKey()) {
+        const ai = el('button', 'btn ghost sm', 'ลองใช้ AI แทน');
+        ai.onclick = () => readWithAI(page, box);
+        row.appendChild(ai);
+      }
       const dl = el('button', 'btn ghost sm', 'ดาวน์โหลด SVG รูปนี้');
       dl.onclick = () => downloadSvg(page, box);
       row.appendChild(dl);
@@ -1018,14 +1028,22 @@
     return fullRes;
   }
 
-  async function renderFigure(page, box) {
+  /* The crop, deskewed and whitened — what the exporter writes and what the
+     tracer reads. One place, so they can never diverge. */
+  async function cleanedCrop(page, box, overrides) {
     const fr = await ensureFullRes(page);
     const b = AM.pipeline.boxToFullRes(box, fr.boxScale);
     const x = AM.util.clamp(b.x, 0, fr.w - 2), y = AM.util.clamp(b.y, 0, fr.h - 2);
     const w = Math.max(2, Math.min(b.w, fr.w - x)), h = Math.max(2, Math.min(b.h, fr.h - y));
     const img = fr.ctx.getImageData(x, y, w, h);
     const s = state.settings;
-    const cleaned = AM.clean.cleanCrop(img.data, w, h, { mode: s.mode, bolder: s.bolder });
+    return AM.clean.cleanCrop(img.data, w, h,
+      Object.assign({ mode: s.mode, bolder: s.bolder }, overrides || {}));
+  }
+
+  async function renderFigure(page, box) {
+    const s = state.settings;
+    const cleaned = await cleanedCrop(page, box);
 
     const src = el('canvas');
     src.width = cleaned.width; src.height = cleaned.height;
@@ -1141,7 +1159,10 @@
 
   const waitNotice = what => info => status(
     'Gemini ' + what + ' เกินโควตา — รอ ' + Math.round(info.delayMs / 1000) +
-    ' วินาทีแล้วลองใหม่ (ครั้งที่ ' + info.attempt + '/' + info.max + ')');
+    ' วินาทีแล้วลองใหม่เอง (ครั้งที่ ' + info.attempt + '/' + info.max + ')');
+  const waitCountdown = what => info => status(
+    'เกินโควตา — จะลองใหม่เองในอีก ' + Math.ceil(info.remainingMs / 1000) +
+    ' วินาที (ครั้งที่ ' + info.attempt + '/' + info.max + ') · ' + what);
 
   async function readWithAI(page, box) {
     const key = getKey();
@@ -1154,7 +1175,8 @@
          would otherwise have been pasted into Word. */
       await throttle('อ่านมุม');
       const fig = await AM.extract.readFigure(bytesToBase64(box.png), key,
-                                              { timeoutMs: 90000, onRetry: waitNotice('อ่านรูป') });
+                                              { timeoutMs: 90000, onRetry: waitNotice('อ่านรูป'),
+                                                onCountdown: waitCountdown('อ่านมุม') });
       AM.geometry.solve(fig);
       box.figure = fig;
       box.lastError = null;
@@ -1165,6 +1187,47 @@
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
     box.reading = false;
+    renderStep();
+  }
+
+  /* Recovering the geometry from the pixels. No key, no quota, no waiting —
+     and the part a model got wrong (reading "82" as "32") is simply not
+     attempted: the values are typed by the person looking at the original. */
+  async function traceBox(page, box) {
+    box.reading = true;
+    if (state.step === 4) renderCustomize();
+    try {
+      const crop = await cleanedCrop(page, box, { mode: 'gray', bolder: false, padding: 0 });
+      const gray = AM.image.toGray(crop.data, crop.width, crop.height);
+      const fig = AM.trace.traceFigure(gray, crop.width, crop.height, {});
+      if (!fig || !fig.lines.length) {
+        box.lastError = { message: 'ไม่พบเส้นตรงในกรอบนี้ ลองตีกรอบให้พอดีกับรูปมากขึ้น', raw: '' };
+      } else {
+        AM.geometry.solve(fig);
+        box.figure = fig;
+        box.lastError = null;
+      }
+    } catch (e) {
+      box.lastError = { message: (e && e.message) || String(e), raw: '' };
+    }
+    box.reading = false;
+    renderStep();
+  }
+
+  async function traceSelected() {
+    const page = active();
+    if (!page) return;
+    const list = chosenBoxes().filter(x => !x.box.figure);
+    if (!list.length) { goStep(4); return; }
+    state.figIndex = 0;
+    goStep(4);
+    for (let i = 0; i < list.length; i++) {
+      status('กำลังแปลงรูปที่ ' + (i + 1) + ' จาก ' + list.length + '…');
+      state.figIndex = chosenBoxes().findIndex(x => x.box === list[i].box);
+      await traceBox(list[i].page, list[i].box);
+    }
+    state.figIndex = 0;
+    status(null);
     renderStep();
   }
 
@@ -1221,7 +1284,8 @@
       const d = page.deskewed;
       await throttle('ค้นหารูป');
       const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
-        { width: d.w, height: d.h, timeoutMs: 90000, onRetry: waitNotice('ค้นหารูป') });
+        { width: d.w, height: d.h, timeoutMs: 90000, onRetry: waitNotice('ค้นหารูป'),
+          onCountdown: waitCountdown('ค้นหารูป') });
       if (boxes.length) {
         for (const b of page.boxes) invalidateBox(b);
         page.boxes = boxes.map(b => {
@@ -1278,7 +1342,7 @@
       goStep(state.step - 1);
     };
     $('#btn-next').onclick = () => {
-      if (state.step === 3) { readSelected(); return; }
+      if (state.step === 3) { traceSelected(); return; }
       if (state.step === 4) {
         const list = chosenBoxes();
         if (state.figIndex < list.length - 1) { state.figIndex++; renderCustomize(); renderActions(); return; }
@@ -1369,7 +1433,8 @@
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
   AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
-             readWithAI, readSelected, findWithAI, downloadSvg, downloadAllSvg,
+             readWithAI, readSelected, findWithAI, traceBox, traceSelected, cleanedCrop,
+             downloadSvg, downloadAllSvg,
              setAngleLabel, renderStep, goStep, chosenBoxes, getKey, bytesToBase64, pageBase64 };
 
   initControls();

@@ -155,7 +155,7 @@ console.log('\nthe call itself');
                json: async () => ({ output: [{ type: 'text', text: JSON.stringify(READING) }] }) };
     };
     const fig = await E.readFigure('QUJD', 'k',
-      { retryBaseMs: 5, onRetry: i => retries.push(i.delayMs) });
+      { retryBaseMs: 5, minWaitMs: 0, retryPadMs: 0, onRetry: i => retries.push(i.delayMs) });
     check('a 429 is retried until it succeeds', !!fig && calls === 3,
           calls + ' attempts, backing off ' + retries.join('ms, ') + 'ms');
     check('the wait grows between attempts', retries.length === 2 && retries[1] > retries[0],
@@ -168,7 +168,7 @@ console.log('\nthe call itself');
                json: async () => ({ error: { message: 'quota' } }) };
     };
     let msg = '';
-    try { await E.readFigure('QUJD', 'k', { retryBaseMs: 5, retries: 2 }); }
+    try { await E.readFigure('QUJD', 'k', { retryBaseMs: 5, minWaitMs: 0, retryPadMs: 0, retries: 2 }); }
     catch (e) { msg = e.message; }
     check('it gives up after the set number of tries', calls === 3, calls + ' attempts');
     check('and then explains the free-tier limit and how to raise it',
@@ -182,8 +182,26 @@ console.log('\nthe call itself');
       return { ok: true, status: 200, headers: { get: () => null },
                json: async () => ({ output: [{ type: 'text', text: JSON.stringify(READING) }] }) };
     };
-    const fig2 = await E.readFigure('QUJD', 'k', { retryBaseMs: 5 });
+    const fig2 = await E.readFigure('QUJD', 'k', { retryBaseMs: 5, minWaitMs: 0, retryPadMs: 0 });
     check('a server error is retried too', !!fig2 && calls === 2);
+
+    /* Google states the wait inside the error body — "Please retry in 49.1s".
+       Guessing exponentially while ignoring that means giving up after thirty
+       seconds on a limit that clears in fifty. */
+    let waited = 0;
+    globalThis.fetch = async () => ({
+      ok: false, status: 429, headers: { get: () => null },
+      clone: () => ({ text: async () => JSON.stringify({ error: {
+        message: 'You exceeded your current quota. Please retry in 49.125246563s.' } }) }),
+      json: async () => ({ error: { message: 'quota' } })
+    });
+    try {
+      await E.readFigure('QUJD', 'k',
+        { retryBaseMs: 5, retries: 1, minWaitMs: 0, retryPadMs: 0, maxWaitMs: 60000,
+          onRetry: i => { waited = i.delayMs; }, onCountdown: () => {} });
+    } catch (e) { /* expected to fail after its one retry */ }
+    check('the wait Google states in the body is used', Math.round(waited / 1000) === 49,
+          Math.round(waited / 1000) + 's');
   }
 
   console.log('\n' + (failures ? failures + ' of ' + checks + ' checks FAILED'

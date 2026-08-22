@@ -196,13 +196,33 @@
       }
       const retryable = res.status === 429 || res.status >= 500;
       if (!retryable || attempt >= max) return res;
+
+      /* Google states the wait twice and neither is a guess: Retry-After when
+         it sends one, and "Please retry in 49.1s" inside the error body. Doing
+         our own exponential guessing while ignoring both means giving up after
+         30 seconds on a limit that clears in 50. */
       let delay = wait;
       try {
         const ra = res.headers && res.headers.get && parseFloat(res.headers.get('retry-after'));
-        if (isFinite(ra) && ra > 0) delay = Math.min(ra * 1000, 60000);
+        if (isFinite(ra) && ra > 0) delay = ra * 1000;
       } catch (e) { /* no headers on this response */ }
+      try {
+        if (res.clone) {
+          const text = await res.clone().text();
+          const m = text.match(/retry in ([\d.]+)\s*s/i);
+          if (m) delay = Math.max(delay, parseFloat(m[1]) * 1000);
+        }
+      } catch (e) { /* body not readable twice; the header or the guess stands */ }
+      const floor = o.minWaitMs === undefined ? 500 : o.minWaitMs;
+      delay = Math.min(Math.max(delay, floor) + (o.retryPadMs === undefined ? 800 : o.retryPadMs),
+                       o.maxWaitMs || 75000);
+
       if (o.onRetry) o.onRetry({ attempt: attempt + 1, max, delayMs: delay, status: res.status });
-      await sleep(delay);
+      const until = Date.now() + delay;
+      while (Date.now() < until) {
+        await sleep(Math.min(500, until - Date.now()));
+        if (o.onCountdown) o.onCountdown({ attempt: attempt + 1, max, remainingMs: until - Date.now() });
+      }
       wait = Math.min(wait * 2, 32000);
     }
   }

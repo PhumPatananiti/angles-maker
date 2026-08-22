@@ -65,11 +65,12 @@
     <section class="card key-card" id="key-card" aria-labelledby="key-title">
       <div class="card-head">
         <svg class="ico" aria-hidden="true"><use href="#i-key"/></svg>
-        <h2 id="key-title">Gemini API key</h2>
+        <h2 id="key-title">Gemini API key (ไม่จำเป็น)</h2>
         <span id="ai-state" class="chip">ยังไม่ได้ใส่</span>
       </div>
       <div id="key-unset">
-        <p class="muted">ใช้ให้ AI หารูปมุมและอ่านค่าให้ — ขอคีย์ฟรีที่
+        <p class="muted">โปรแกรมทำงานได้เต็มรูปแบบโดยไม่ต้องใช้คีย์ ใส่ไว้เฉพาะเมื่ออยากให้ AI
+           ช่วยหารูปหรือช่วยอ่านรูปที่ซับซ้อน — บัญชีฟรีจำกัดเพียง 20 ครั้งต่อวัน ขอคีย์ที่
            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
            ใส่ครั้งเดียว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้</p>
         <div class="field-row">
@@ -122,7 +123,7 @@
   <section class="step" data-step="3" hidden>
     <div class="step-head">
       <h1>เลือกรูปที่ต้องการใช้</h1>
-      <p>ติ๊กเฉพาะรูปที่จะเอาไปทำข้อสอบ จ่ายค่า AI เฉพาะรูปที่เลือก</p>
+      <p>ติ๊กเฉพาะรูปที่จะเอาไปทำข้อสอบ แล้วกดแปลงเป็นเส้นและมุม — ทำในเครื่อง ไม่ใช้โควตา AI</p>
     </div>
     <div class="bar-row">
       <span id="select-count" class="muted">เลือกแล้ว 0 รูป</span>
@@ -209,6 +210,7 @@
 <script src="js/core/synth.js"></script>
 <script src="js/core/geometry.js"></script>
 <script src="js/core/svg.js"></script>
+<script src="js/core/trace.js"></script>
 <script src="js/core/extract.js"></script>
 <script src="js/app.js"></script>
 </body>
