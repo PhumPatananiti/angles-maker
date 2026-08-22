@@ -4,100 +4,162 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com">
+      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com">
 <title>Angles Maker — ตัดรูปมุมจากหน้าหนังสือ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-<header class="bar">
-  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → มุมที่แก้ไขค่าได้ → SVG สำหรับ Word</span></div>
-  <div class="bar-actions">
-    <button id="btn-add" class="primary">เพิ่มรูปภาพ…</button>
-    <button id="btn-demo" class="ghost">หน้าตัวอย่าง</button>
-    <input id="file-input" type="file" accept="image/*" multiple hidden>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0-4-4m4 4 4-4"/><path d="M4 18v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.85 12.15 8.15-8.15M18 6l2 2M15 9l2 2"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>Angles Maker</span>
   </div>
+  <button id="btn-restart" class="btn ghost sm" hidden>เริ่มใหม่</button>
 </header>
 
-<div id="pages" class="pages" hidden></div>
+<nav class="stepper" aria-label="ขั้นตอน">
+  <ol id="stepper">
+    <li data-step="1"><span class="dot">1</span><span class="lbl">อัปโหลด</span></li>
+    <li data-step="2"><span class="dot">2</span><span class="lbl">ค้นหารูป</span></li>
+    <li data-step="3"><span class="dot">3</span><span class="lbl">เลือกรูป</span></li>
+    <li data-step="4"><span class="dot">4</span><span class="lbl">ปรับแต่ง</span></li>
+    <li data-step="5"><span class="dot">5</span><span class="lbl">ส่งออก</span></li>
+  </ol>
+</nav>
 
-<main>
-  <section class="stage">
-    <div id="drop" class="drop">
-      <div class="drop-inner">
-        <h1>ลากรูปถ่ายหน้าหนังสือมาวางตรงนี้</h1>
-        <p>โปรแกรมจะปรับหน้าให้ตรง ลบเงาออก แล้วให้ AI หารูปมุมทุกรูปในหน้านั้นเอง
-           คุณเพียงเลือกว่าจะใช้รูปไหน แก้ค่ามุมได้ตามต้องการ แล้วบันทึกเป็นไฟล์ SVG
-           ไปวางใน Word</p>
-        <button id="btn-add2" class="primary big">เลือกรูปภาพ…</button>
-        <p class="muted">รองรับ JPG, PNG, WebP · ต้องใส่ Gemini API key หนึ่งครั้งก่อนใช้งาน</p>
-      </div>
+<main id="main" tabindex="-1">
+
+  <!-- 1 ─ upload -->
+  <section class="step" data-step="1">
+    <div class="step-head">
+      <h1>เริ่มจากรูปถ่ายหน้าหนังสือ</h1>
+      <p>ถ่ายหน้าแบบฝึกหัดด้วยโทรศัพท์ แล้วลากมาวางตรงนี้ จะใส่กี่หน้าก็ได้</p>
     </div>
 
-    <div id="workspace" class="workspace" hidden>
-      <div id="page-view" class="page-view">
-        <div id="canvas-wrap" class="canvas-wrap">
-          <canvas id="page-canvas"></canvas>
-          <div id="overlay" class="overlay"></div>
-        </div>
-      </div>
-      <div id="gallery" class="gallery"></div>
+    <div id="drop" class="drop" role="button" tabindex="0" aria-label="เลือกรูปภาพ">
+      <svg class="drop-ico" aria-hidden="true"><use href="#i-upload"/></svg>
+      <strong>ลากรูปมาวาง หรือกดเพื่อเลือก</strong>
+      <span class="muted">JPG · PNG · WebP — ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์ ทุกอย่างทำในเครื่องนี้</span>
+      <input id="file-input" type="file" accept="image/*" multiple hidden>
     </div>
-    <div id="status" class="status" hidden></div>
-  </section>
+    <div class="center"><button id="btn-demo" class="btn link">หรือลองด้วยหน้าตัวอย่าง</button></div>
 
-  <aside class="side" id="side" hidden>
-    <div class="panel" id="ai-panel">
-      <div class="panel-head"><h2>Gemini</h2><span id="ai-state" class="pill">ยังไม่ใส่คีย์</span></div>
+    <div id="pages-1" class="page-strip" hidden></div>
+
+    <section class="card key-card" id="key-card" aria-labelledby="key-title">
+      <div class="card-head">
+        <svg class="ico" aria-hidden="true"><use href="#i-key"/></svg>
+        <h2 id="key-title">Gemini API key</h2>
+        <span id="ai-state" class="chip">ยังไม่ได้ใส่</span>
+      </div>
       <div id="key-unset">
-        <label class="field">
-          <span>API key</span>
-          <input id="in-key" type="password" spellcheck="false" autocomplete="off" placeholder="AIza…">
-          <small>ขอคีย์ฟรีที่ aistudio.google.com/apikey — เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น
-                 ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
-        </label>
-        <div class="row"><button id="btn-key-save" class="primary">บันทึกคีย์</button></div>
+        <p class="muted">ใช้ให้ AI หารูปมุมและอ่านค่าให้ — ขอคีย์ฟรีที่
+           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
+           ใส่ครั้งเดียว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้</p>
+        <div class="field-row">
+          <label class="field grow">
+            <span>API key</span>
+            <input id="in-key" type="password" spellcheck="false" autocomplete="off" placeholder="AIza…">
+          </label>
+          <button id="btn-key-save" class="btn primary">บันทึกคีย์</button>
+        </div>
       </div>
       <div id="key-set" hidden>
-        <p class="hint">ใช้คีย์ <code id="key-mask"></code></p>
-        <div class="row">
-          <button id="btn-find" class="ghost">ค้นหารูปใหม่</button>
-          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
-        </div>
+        <p class="muted">ใช้คีย์ <code id="key-mask"></code></p>
+        <button id="btn-key-clear" class="btn ghost sm">เปลี่ยนคีย์</button>
+      </div>
+    </section>
+  </section>
+
+  <!-- 2 ─ find -->
+  <section class="step" data-step="2" hidden>
+    <div class="step-head">
+      <h1>AI กำลังหารูปมุมในหน้านี้</h1>
+      <p id="find-status">ปรับหน้าให้ตรง ลบเงา แล้วให้ Gemini ตีกรอบรูปทุกรูป</p>
+    </div>
+    <div id="pages-2" class="page-strip" hidden></div>
+    <div id="page-view" class="page-view">
+      <div id="canvas-wrap" class="canvas-wrap">
+        <canvas id="page-canvas"></canvas>
+        <div id="overlay" class="overlay"></div>
       </div>
     </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>รูปที่พบ</h2><span id="fig-count" class="pill">0</span>
-      </div>
-      <div class="row">
-        <button id="btn-all" class="ghost">เลือกทั้งหมด</button>
-        <button id="btn-none" class="ghost">ไม่เลือกเลย</button>
-      </div>
-      <div class="row">
-        <button id="btn-read" class="primary">อ่านมุมที่เลือก</button>
-      </div>
-      <div class="row">
-        <button id="btn-svg-all" class="ghost">ดาวน์โหลด SVG ทั้งหมด</button>
-      </div>
-      <p class="hint" id="read-hint">เลือกรูปที่ต้องการแล้วกด “อ่านมุมที่เลือก”
-         AI จะแปลงรูปเป็นเส้นและมุมที่แก้ค่าได้</p>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h2>หน้ากระดาษ</h2></div>
+    <details class="card tools">
+      <summary>เครื่องมือหน้ากระดาษ</summary>
       <label class="field">
         <span>หมุนหน้ากระดาษ <output id="out-angle">0.0°</output></span>
         <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
       </label>
-      <label class="check"><input id="in-manual" type="checkbox"> เพิ่มกรอบเองได้ (ปกติไม่ต้องใช้)</label>
-      <p class="hint">เปิดไว้เมื่อ AI มองข้ามรูปบางรูป แล้วลากกรอบคลุมรูปนั้นบนหน้ากระดาษ</p>
-    </div>
+      <label class="check"><input id="in-manual" type="checkbox"> ลากกรอบเองบนหน้ากระดาษ (เมื่อ AI มองข้ามรูป)</label>
+      <button id="btn-find" class="btn ghost sm">ให้ AI ค้นหาใหม่</button>
+    </details>
+  </section>
 
-    <div class="panel">
-      <div class="panel-head"><h2>ไฟล์ภาพ</h2></div>
+  <!-- 3 ─ select -->
+  <section class="step" data-step="3" hidden>
+    <div class="step-head">
+      <h1>เลือกรูปที่ต้องการใช้</h1>
+      <p>ติ๊กเฉพาะรูปที่จะเอาไปทำข้อสอบ จ่ายค่า AI เฉพาะรูปที่เลือก</p>
+    </div>
+    <div class="bar-row">
+      <span id="select-count" class="muted">เลือกแล้ว 0 รูป</span>
+      <span class="spacer"></span>
+      <button id="btn-all" class="btn ghost sm">เลือกทั้งหมด</button>
+      <button id="btn-none" class="btn ghost sm">ไม่เลือกเลย</button>
+    </div>
+    <div id="select-grid" class="select-grid"></div>
+  </section>
+
+  <!-- 4 ─ customize -->
+  <section class="step" data-step="4" hidden>
+    <div class="step-head">
+      <h1 id="cust-title">ปรับแต่งรูป</h1>
+      <p>เทียบกับต้นฉบับ พิมพ์ค่ามุมใหม่แล้วรูปจะขยับตาม ลากจุดเพื่อย้ายเส้น</p>
+    </div>
+    <div id="fig-nav" class="fig-nav"></div>
+    <div id="cust-body"></div>
+  </section>
+
+  <!-- 5 ─ export -->
+  <section class="step" data-step="5" hidden>
+    <div class="step-head">
+      <h1>พร้อมนำไปใช้ใน Word</h1>
+      <p id="export-summary">—</p>
+    </div>
+    <div class="card">
+      <div class="field-row">
+        <label class="field grow">
+          <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
+          <input id="in-prefix" type="text" value="q" spellcheck="false">
+        </label>
+      </div>
+      <button id="btn-svg-all" class="btn primary lg full">
+        <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>
+        ดาวน์โหลด SVG ทั้งหมด (.zip)
+      </button>
+      <p class="muted center">ใน Word: แทรก → รูปภาพ → เลือกไฟล์ .svg · คลิกขวาที่รูปแล้วเลือก “แปลงเป็นรูปร่าง” ถ้าอยากแก้ใน Word</p>
+    </div>
+    <div id="export-list" class="export-list"></div>
+    <details class="card tools">
+      <summary>ตัวเลือกไฟล์ PNG (รูปต้นฉบับที่ทำความสะอาดแล้ว)</summary>
       <label class="field">
-        <span>รูปแบบภาพ (PNG)</span>
+        <span>รูปแบบภาพ</span>
         <select id="in-mode">
           <option value="gray">โทนเทาสะอาด</option>
           <option value="bw">ขาวดำล้วน</option>
@@ -109,16 +171,25 @@
         <input id="in-width" type="range" min="0" max="2000" step="50" value="900">
       </label>
       <label class="check"><input id="in-bolder" type="checkbox"> ทำเส้นให้หนาขึ้น</label>
-      <label class="field">
-        <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
-        <input id="in-prefix" type="text" value="q" spellcheck="false">
-      </label>
-      <div class="row"><button id="btn-zip" class="ghost">ดาวน์โหลด PNG ทั้งหมด (.zip)</button></div>
-    </div>
-  </aside>
+      <button id="btn-zip" class="btn ghost full">ดาวน์โหลด PNG ทั้งหมด (.zip)</button>
+    </details>
+  </section>
+
 </main>
 
-<div id="toast" class="toast" hidden></div>
+<footer class="actions" id="actions">
+  <button id="btn-back" class="btn ghost">
+    <svg class="ico" aria-hidden="true"><use href="#i-back"/></svg> ย้อนกลับ
+  </button>
+  <span class="spacer"></span>
+  <button id="btn-next" class="btn primary">
+    <span id="btn-next-label">ถัดไป</span>
+    <svg class="ico" aria-hidden="true"><use href="#i-next"/></svg>
+  </button>
+</footer>
+
+<div id="status" class="status" role="status" aria-live="polite" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="js/core/util.js"></script>
 <script src="js/core/image.js"></script>

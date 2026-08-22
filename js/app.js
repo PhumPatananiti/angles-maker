@@ -25,6 +25,8 @@
     selected: null,
     undo: [],
     manual: false,
+    step: 1,
+    figIndex: 0,
     settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
   };
   /* Only ever one full-resolution deskewed page in memory: a 12 MP photo is
@@ -157,7 +159,7 @@
     status(null);
     syncControls();
     renderPages();
-    renderAll();
+    if (state.step < 2) goStep(2); else renderStep();
     schedulePrepare(0);
     if (getKey() && !page.searched) findWithAI(page);
   }
@@ -198,15 +200,16 @@
     return c.toDataURL('image/png');
   }
 
-  function renderPages() {
-    const wrap = $('#pages');
+  function renderPagesInto(wrap) {
+    if (!wrap) return;
     wrap.innerHTML = '';
-    wrap.hidden = state.pages.length < 1;
     state.pages.forEach((p, i) => {
       const b = el('button', 'thumb' + (p.id === state.activeId ? ' active' : ''));
+      b.type = 'button';
+      b.setAttribute('aria-label', 'หน้า ' + (i + 1));
       const img = el('img');
       img.src = p.thumb || '';
-      img.alt = 'หน้า ' + (i + 1);
+      img.alt = '';
       b.appendChild(img);
       b.appendChild(el('span', 'badge', String(p.boxes.length)));
       const x = el('span', 'x', '×');
@@ -216,6 +219,12 @@
       b.onclick = () => selectPage(p.id);
       wrap.appendChild(b);
     });
+  }
+  function renderPages() {
+    renderPagesInto($('#pages-1'));
+    renderPagesInto($('#pages-2'));
+    const s1 = $('#pages-1'); if (s1) s1.hidden = !state.pages.length;
+    const s2 = $('#pages-2'); if (s2) s2.hidden = state.pages.length < 2;
   }
 
   function removePage(id) {
@@ -239,26 +248,291 @@
     if (!active().ready) processActive(); else { syncControls(); renderAll(); }
   }
 
-  function renderAll() {
-    const page = active();
-    const has = !!(page && page.ready);
-    $('#drop').hidden = has;
-    $('#workspace').hidden = !has;
-    $('#side').hidden = !has;
-    if (!has) return;
+  /* ---------- the wizard ---------- */
 
+  const STEPS = 5;
+  const stepOf = n => document.querySelector('.step[data-step="' + n + '"]');
+
+  function canEnter(n) {
+    const pages = state.pages.filter(p => p.ready);
+    if (n <= 1) return true;
+    if (n === 2 || n === 3) return pages.length > 0;
+    if (n === 4) return pages.some(p => p.boxes.some(b => b.selected !== false));
+    if (n === 5) return pages.some(p => p.boxes.some(b => b.figure));
+    return false;
+  }
+
+  function goStep(n, opts) {
+    n = AM.util.clamp(n | 0, 1, STEPS);
+    while (n > 1 && !canEnter(n)) n--;
+    state.step = n;
+    if (!opts || opts.push !== false) {
+      try { history.pushState({ step: n }, '', '#' + n); } catch (e) { /* file:// */ }
+    }
+    renderStep();
+    const main = $('#main');
+    if (main) { main.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'auto' }); }
+  }
+
+  function renderStepper() {
+    document.querySelectorAll('#stepper li').forEach(li => {
+      const n = +li.dataset.step;
+      li.classList.toggle('current', n === state.step);
+      li.classList.toggle('done', n < state.step);
+      li.setAttribute('aria-current', n === state.step ? 'step' : 'false');
+      const dot = li.querySelector('.dot');
+      dot.innerHTML = n < state.step
+        ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : String(n);
+      li.onclick = n < state.step ? () => goStep(n) : null;
+      li.tabIndex = n < state.step ? 0 : -1;
+      li.onkeydown = n < state.step ? (ev => { if (ev.key === 'Enter' || ev.key === ' ') goStep(n); }) : null;
+    });
+  }
+
+  function renderActions() {
+    const back = $('#btn-back'), next = $('#btn-next'), label = $('#btn-next-label');
+    const page = active();
+    back.hidden = state.step <= 1;
+    let text = 'ถัดไป', enabled = true, hide = false;
+    if (state.step === 1) {
+      enabled = state.pages.some(p => p.ready);
+      text = 'ถัดไป: ค้นหารูป';
+    } else if (state.step === 2) {
+      const n = state.pages.reduce((k, p) => k + p.boxes.length, 0);
+      enabled = n > 0;
+      text = n ? 'ถัดไป: เลือกรูป (' + n + ')' : 'ยังไม่พบรูป';
+    } else if (state.step === 3) {
+      const chosen = state.pages.reduce((k, p) => k + p.boxes.filter(b => b.selected !== false).length, 0);
+      const unread = state.pages.reduce((k, p) => k + p.boxes.filter(b => b.selected !== false && !b.figure).length, 0);
+      enabled = chosen > 0;
+      text = !chosen ? 'เลือกอย่างน้อย 1 รูป'
+           : unread ? 'อ่านมุม ' + unread + ' รูปด้วย AI' : 'ถัดไป: ปรับแต่ง';
+    } else if (state.step === 4) {
+      const list = chosenBoxes();
+      text = state.figIndex < list.length - 1 ? 'รูปถัดไป' : 'ถัดไป: ส่งออก';
+      enabled = list.length > 0;
+    } else if (state.step === 5) {
+      hide = true;
+    }
+    next.hidden = hide;
+    next.disabled = !enabled;
+    label.textContent = text;
+    $('#btn-restart').hidden = !state.pages.length;
+  }
+
+  function renderStep() {
+    for (let n = 1; n <= STEPS; n++) { const sec = stepOf(n); if (sec) sec.hidden = n !== state.step; }
+    renderStepper();
+    if (state.step === 1) renderUpload();
+    if (state.step === 2) renderFind();
+    if (state.step === 3) renderSelect();
+    if (state.step === 4) renderCustomize();
+    if (state.step === 5) renderExport();
+    renderActions();
+  }
+  const renderAll = renderStep;
+
+  /* Every figure the user ticked, across all pages, in order. */
+  function chosenBoxes() {
+    const out = [];
+    for (const p of state.pages) for (const b of p.boxes) if (b.selected !== false) out.push({ page: p, box: b });
+    return out;
+  }
+
+  /* ---- step 1 ---- */
+  function renderUpload() {
+    syncKeyPanel();
+    const strip = $('#pages-1');
+    strip.hidden = !state.pages.length;
+    renderPagesInto(strip);
+  }
+
+  /* ---- step 2 ---- */
+  function renderFind() {
+    const page = active();
+    const strip = $('#pages-2');
+    strip.hidden = state.pages.length < 2;
+    renderPagesInto(strip);
+    if (!page || !page.ready) return;
     const d = page.deskewed;
     const canvas = $('#page-canvas');
     canvas.width = d.w; canvas.height = d.h;
     canvas.getContext('2d').putImageData(
       new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
-
     const view = $('#page-view');
-    const availW = view.clientWidth - 28, availH = view.clientHeight - 28;
+    const availW = view.clientWidth - 24;
+    const availH = Math.max(240, Math.min(window.innerHeight * 0.62, 720) - 24);
     const width = Math.min(availW, availH * (d.w / d.h));
     $('#canvas-wrap').style.width = Math.max(100, width) + 'px';
+    const st = $('#find-status');
+    const n = page.boxes.length;
+    if (page.finding) st.textContent = 'Gemini กำลังตีกรอบรูปทุกรูปในหน้านี้…';
+    else if (!getKey()) st.textContent = 'ยังไม่ได้ใส่ Gemini API key — ใช้การหารูปแบบออฟไลน์แทน พบ ' + n + ' รูป (ใส่คีย์ในขั้นที่ 1 เพื่อให้แม่นขึ้น)';
+    else st.textContent = n ? 'พบ ' + n + ' รูปในหน้านี้ — ตรวจกรอบแล้วกดถัดไป' : 'ไม่พบรูปมุมในหน้านี้ — เปิด “เครื่องมือหน้ากระดาษ” แล้วลากกรอบเอง';
     renderBoxes();
-    renderGallery();
+  }
+
+  /* ---- step 3 ---- */
+  function renderSelect() {
+    const grid = $('#select-grid');
+    grid.innerHTML = '';
+    const all = [];
+    for (const p of state.pages) for (const b of p.boxes) all.push({ page: p, box: b });
+    const chosen = all.filter(x => x.box.selected !== false).length;
+    $('#select-count').textContent = 'เลือกแล้ว ' + chosen + ' จาก ' + all.length + ' รูป';
+    if (!all.length) {
+      const e = el('div', 'empty', 'ยังไม่มีรูปให้เลือก ย้อนกลับไปขั้นที่ 2 เพื่อค้นหา');
+      grid.appendChild(e);
+      return;
+    }
+    all.forEach(({ page, box }) => {
+      const on = box.selected !== false;
+      const card = el('div', 'pick' + (on ? ' on' : ''));
+      card.setAttribute('role', 'checkbox');
+      card.setAttribute('aria-checked', on ? 'true' : 'false');
+      card.tabIndex = 0;
+      const tick = el('span', 'tick');
+      tick.innerHTML = '<svg aria-hidden="true"><use href="#i-check"/></svg>';
+      card.appendChild(tick);
+      const pic = el('div', 'pic');
+      if (box.url) { const img = el('img'); img.src = box.url; img.alt = ''; pic.appendChild(img); }
+      else pic.appendChild(previewCanvas(page, box));
+      card.appendChild(pic);
+      const name = el('div', 'name');
+      name.appendChild(el('span', null, nameFor(page, box)));
+      const chip = el('span', 'chip' + (box.figure ? ' ok' : ''));
+      chip.textContent = box.figure ? 'อ่านแล้ว' : 'ยังไม่ได้อ่าน';
+      name.appendChild(chip);
+      card.appendChild(name);
+      const toggle = () => { box.selected = !(box.selected !== false); renderSelect(); renderActions(); };
+      card.onclick = toggle;
+      card.onkeydown = ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); toggle(); } };
+      grid.appendChild(card);
+    });
+  }
+
+  /* ---- step 4 ---- */
+  function renderCustomize() {
+    const list = chosenBoxes();
+    const nav = $('#fig-nav'), body = $('#cust-body'), title = $('#cust-title');
+    nav.innerHTML = ''; body.innerHTML = '';
+    if (!list.length) {
+      title.textContent = 'ปรับแต่งรูป';
+      body.appendChild(el('div', 'empty', 'ยังไม่ได้เลือกรูป ย้อนกลับไปขั้นที่ 3'));
+      return;
+    }
+    state.figIndex = AM.util.clamp(state.figIndex, 0, list.length - 1);
+    list.forEach(({ page, box }, i) => {
+      const pill = el('button', 'pill' + (i === state.figIndex ? ' current' : '') +
+        (box.figure ? ((box.figure.conflicts || []).length ? ' warn' : ' ready') : ''));
+      pill.type = 'button';
+      pill.innerHTML = '<span class="st" aria-hidden="true"></span>' + nameFor(page, box);
+      pill.onclick = () => { state.figIndex = i; renderCustomize(); renderActions(); };
+      nav.appendChild(pill);
+    });
+    const { page, box } = list[state.figIndex];
+    title.textContent = 'ปรับแต่ง ' + nameFor(page, box) + ' (' + (state.figIndex + 1) + '/' + list.length + ')';
+
+    const two = el('div', 'twoup');
+    const crop = el('figure');
+    crop.appendChild(el('figcaption', null, 'ต้นฉบับจากหนังสือ'));
+    if (box.url) { const img = el('img'); img.src = box.url; img.alt = 'รูปต้นฉบับ'; crop.appendChild(img); }
+    else crop.appendChild(previewCanvas(page, box));
+    two.appendChild(crop);
+
+    const built = el('figure');
+    if (box.reading) {
+      built.appendChild(el('figcaption', null, 'สร้างใหม่จากที่ AI อ่าน'));
+      const bb = el('div', 'busy-block');
+      bb.appendChild(el('div', 'spinner'));
+      bb.appendChild(el('span', null, 'Gemini กำลังอ่านเส้นและมุม…'));
+      built.appendChild(bb);
+    } else if (box.figure) {
+      built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อย้ายเส้น'));
+      const holder = el('div', 'svg-holder');
+      holder.innerHTML = AM.svg.render(box.figure, { width: 420, interactive: true });
+      attachPointDrag(holder, page, box);
+      built.appendChild(holder);
+    } else {
+      built.appendChild(el('figcaption', null, 'ยังไม่ได้อ่าน'));
+      const bb = el('div', 'busy-block');
+      bb.appendChild(el('span', null, getKey() ? 'รูปนี้ยังไม่ได้ให้ AI อ่าน' : 'ต้องใส่ Gemini API key ในขั้นที่ 1 ก่อน'));
+      const b = el('button', 'btn primary sm', 'อ่านรูปนี้ด้วย AI');
+      b.onclick = () => readWithAI(page, box);
+      bb.appendChild(b);
+      built.appendChild(bb);
+    }
+    two.appendChild(built);
+    body.appendChild(two);
+
+    if (box.figure) {
+      const card = el('div', 'card');
+      const h = el('div', 'card-head');
+      h.appendChild(el('h2', null, 'ค่ามุม'));
+      const hint = el('span', 'chip acc', 'พิมพ์ค่าใหม่แล้วรูปขยับตาม');
+      h.appendChild(hint);
+      card.appendChild(h);
+      card.appendChild(angleEditor(page, box));
+      body.appendChild(card);
+
+      for (const c of box.figure.conflicts || []) {
+        const n = el('div', 'notice warn');
+        n.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg>';
+        n.appendChild(el('span', null, 'มุมที่จุด ' + c.vertex + ': ป้ายอ่านได้ ' + c.claimed +
+          '° แต่รูปที่วาดวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
+          ' — AI อาจอ่านตัวเลขผิด เทียบกับต้นฉบับแล้วพิมพ์ค่าที่ถูกในช่องด้านบน'));
+        body.appendChild(n);
+      }
+      if (!(box.figure.conflicts || []).length) {
+        const n = el('div', 'notice ok');
+        n.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>';
+        n.appendChild(el('span', null, 'ตัวเลขบนป้ายกับรูปที่วาดตรงกันทุกมุม'));
+        body.appendChild(n);
+      }
+      if (box.figure.notes) {
+        const n = el('div', 'notice info');
+        n.appendChild(el('span', null, 'หมายเหตุจาก AI: ' + box.figure.notes));
+        body.appendChild(n);
+      }
+      const row = el('div', 'bar-row');
+      const again = el('button', 'btn ghost sm', 'ให้ AI อ่านใหม่');
+      again.onclick = () => readWithAI(page, box);
+      row.appendChild(again);
+      const dl = el('button', 'btn ghost sm', 'ดาวน์โหลด SVG รูปนี้');
+      dl.onclick = () => downloadSvg(page, box);
+      row.appendChild(dl);
+      body.appendChild(row);
+    }
+  }
+
+  /* ---- step 5 ---- */
+  function renderExport() {
+    const list = chosenBoxes().filter(x => x.box.figure);
+    const total = chosenBoxes().length;
+    $('#export-summary').textContent = list.length
+      ? 'พร้อมแล้ว ' + list.length + ' รูป' + (total > list.length ? ' (อีก ' + (total - list.length) + ' รูปยังไม่ได้อ่าน)' : '') +
+        ' — ดาวน์โหลดเป็น SVG แล้วแทรกใน Word ได้เลย'
+      : 'ยังไม่มีรูปที่อ่านแล้ว ย้อนกลับไปขั้นที่ 3 แล้วกด “อ่านมุม”';
+    $('#btn-svg-all').disabled = !list.length;
+    const wrap = $('#export-list');
+    wrap.innerHTML = '';
+    list.forEach(({ page, box }) => {
+      const card = el('div', 'ex');
+      const pic = el('div', 'pic');
+      pic.innerHTML = AM.svg.render(box.figure, { width: 240 });
+      card.appendChild(pic);
+      const row = el('div', 'row');
+      row.appendChild(el('strong', null, nameFor(page, box) + '.svg'));
+      const a = el('a', 'btn ghost sm');
+      const svg = AM.svg.render(box.figure, { width: 640 });
+      a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      a.download = AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg';
+      a.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-download"/></svg> SVG';
+      row.appendChild(a);
+      card.appendChild(row);
+      wrap.appendChild(card);
+    });
+    updateZipButton();
   }
 
   function renderBoxes() {
@@ -307,89 +581,6 @@
     return state.settings.prefix + String(figureIndex(page, box)).padStart(2, '0');
   }
 
-  /* ---------- the gallery: pick figures, then shape them ---------- */
-
-  function renderGallery() {
-    const page = active();
-    const wrap = $('#gallery');
-    wrap.innerHTML = '';
-    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
-    $('#fig-count').textContent = total;
-    if (!page) return;
-
-    if (!page.boxes.length) {
-      const empty = el('div', 'gallery-empty');
-      empty.textContent = page.searched
-        ? 'ไม่พบรูปมุมในหน้านี้ — เปิด “เพิ่มกรอบเองได้” แล้วลากกรอบคลุมรูปที่ต้องการ'
-        : 'ใส่ Gemini API key แล้วกด “ค้นหารูปใหม่” เพื่อให้ AI หารูปมุมในหน้านี้';
-      wrap.appendChild(empty);
-      return;
-    }
-
-    page.boxes.forEach(box => {
-      const card = el('div', 'card' + (box.selected === false ? ' off' : ''));
-
-      const head = el('label', 'card-head');
-      const tick = el('input');
-      tick.type = 'checkbox';
-      tick.checked = box.selected !== false;
-      tick.onchange = () => { box.selected = tick.checked; renderGallery(); renderBoxes(); };
-      head.appendChild(tick);
-      head.appendChild(el('span', 'card-name', nameFor(page, box)));
-      const st = el('span', 'card-state ' + (box.figure ? 'done' : box.reading ? 'busy' : ''));
-      st.textContent = box.figure ? 'แก้ค่าได้' : box.reading ? 'กำลังอ่าน…' : 'ยังไม่ได้อ่าน';
-      head.appendChild(st);
-      card.appendChild(head);
-
-      const body = el('div', 'card-body');
-      const crop = el('figure', 'card-crop');
-      crop.appendChild(el('figcaption', null, 'ต้นฉบับ'));
-      if (box.url) {
-        const img = el('img');
-        img.src = box.url;
-        img.alt = '';
-        crop.appendChild(img);
-      } else {
-        crop.appendChild(previewCanvas(page, box));
-      }
-      body.appendChild(crop);
-
-      if (box.figure) {
-        const built = el('figure', 'card-built');
-        built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อขยับเส้น'));
-        const holder = el('div', 'svg-holder');
-        holder.innerHTML = AM.svg.render(box.figure, { width: 300, interactive: true });
-        attachPointDrag(holder, page, box);
-        built.appendChild(holder);
-        body.appendChild(built);
-      }
-      card.appendChild(body);
-
-      if (box.figure) {
-        card.appendChild(angleEditor(page, box));
-        for (const c of box.figure.conflicts || []) {
-          const d = el('div', 'conflict');
-          d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายอ่านได้ ' + c.claimed +
-            '° แต่รูปวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
-            ' — เทียบกับต้นฉบับก่อนใช้';
-          card.appendChild(d);
-        }
-        if (box.figure.notes) {
-          card.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + box.figure.notes));
-        }
-        const actions = el('div', 'row');
-        const dl = el('button', 'primary', 'ดาวน์โหลด SVG');
-        dl.onclick = () => downloadSvg(page, box);
-        actions.appendChild(dl);
-        const again = el('button', 'ghost', 'อ่านใหม่');
-        again.onclick = () => readWithAI(page, box);
-        actions.appendChild(again);
-        card.appendChild(actions);
-      }
-      wrap.appendChild(card);
-    });
-  }
-
   /* Every angle the figure knows about, as an editable value. Typing a number
      re-solves the whole figure, so the drawing and the label cannot disagree. */
   function angleEditor(page, box) {
@@ -397,15 +588,16 @@
     const wrap = el('div', 'angles');
     fig.angles.forEach((a, i) => {
       const row = el('label', 'angle-row');
-      row.appendChild(el('span', 'angle-at', 'มุมที่ ' + a.vertex));
+      row.appendChild(el('span', 'at', 'มุมที่ ' + a.vertex));
       const input = el('input');
       input.type = 'text';
       input.value = a.label || '';
       input.placeholder = 'เช่น 82° หรือ x';
+      input.setAttribute('aria-label', 'ค่ามุมที่จุด ' + a.vertex);
       input.onchange = () => setAngleLabel(page, box, i, input.value);
       row.appendChild(input);
       const measured = AM.geometry.measure(fig, a);
-      row.appendChild(el('span', 'angle-measured',
+      row.appendChild(el('span', 'meas',
                          measured === null ? '' : Math.round(measured * 10) / 10 + '°'));
       wrap.appendChild(row);
     });
@@ -444,7 +636,7 @@
     }
     invalidateBox(box);
     schedulePrepare();
-    renderGallery();
+    renderCustomize();
   }
 
   /* Dragging a point is the other half of customising: it changes the lines
@@ -485,7 +677,7 @@
         svg.removeEventListener('pointerup', up);
         invalidateBox(box);
         schedulePrepare();
-        renderGallery();
+        renderCustomize();
       };
       svg.addEventListener('pointermove', move);
       svg.addEventListener('pointerup', up);
@@ -515,7 +707,9 @@
     saveBytes(AM.zip.makeZip(entries), stem + '-svg.zip', 'application/zip');
   }
 
-  const renderList = renderGallery;
+  /* Background PNG preparation pokes this after every figure; only the steps
+     that show thumbnails need to hear about it, and never the editor mid-drag. */
+  const renderList = () => { if (state.step === 3 || state.step === 5) renderStep(); };
 
   /* Previews come from the analysis-scale page, so nothing at full resolution
      has to be decoded just to draw a thumbnail. */
@@ -579,6 +773,7 @@
         mode = handle || 'move';
         state.selected = box.id;
       } else {
+        if (!state.manual) { state.undo.pop(); return; }
         box = makeBox({ x: start.x, y: start.y, w: 1, h: 1 }, true);
         page.boxes.push(box);
         mode = 'se';
@@ -688,8 +883,8 @@
     if (!btn) return;
     btn.disabled = !total || pending > 0;
     btn.textContent = !total ? 'ยังไม่มีรูปให้บันทึก'
-      : pending ? 'กำลังเตรียมไฟล์ ' + (total - pending) + '/' + total + '…'
-      : 'ดาวน์โหลดทั้งหมด (.zip)';
+      : pending ? 'กำลังเตรียมไฟล์ PNG ' + (total - pending) + '/' + total + '…'
+      : 'ดาวน์โหลด PNG ทั้งหมด (.zip)';
   }
 
   function schedulePrepare(delay) {
@@ -844,7 +1039,8 @@
     const key = getKey();
     $('#key-unset').hidden = !!key;
     $('#key-set').hidden = !key;
-    $('#ai-state').textContent = key ? 'พร้อม' : 'ปิด';
+    $('#ai-state').textContent = key ? 'พร้อมใช้' : 'ยังไม่ได้ใส่';
+    $('#ai-state').className = 'chip' + (key ? ' ok' : '');
     if (key) $('#key-mask').textContent = key.slice(0, 6) + '…' + key.slice(-4);
   }
 
@@ -861,7 +1057,7 @@
     const key = getKey();
     if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
     box.reading = true;
-    renderGallery();
+    if (state.step === 4) renderCustomize();
     try {
       if (!box.png) box.png = await renderFigure(page, box);
       /* The cleaned, deskewed crop is what the model sees — the same image that
@@ -874,19 +1070,25 @@
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
     box.reading = false;
-    renderGallery();
+    renderStep();
   }
 
   async function readSelected() {
     const page = active();
     if (!page) return;
-    const list = page.boxes.filter(b => b.selected !== false && !b.figure);
-    if (!list.length) { toast('ไม่มีรูปที่เลือกไว้และยังไม่ได้อ่าน', 4000); return; }
+    const list = chosenBoxes().filter(x => !x.box.figure);
+    if (!list.length) { goStep(4); return; }
+    if (!getKey()) { toast('ใส่ Gemini API key ในขั้นที่ 1 ก่อน', 5000); goStep(1); return; }
+    state.figIndex = 0;
+    goStep(4);
     for (let i = 0; i < list.length; i++) {
       status('กำลังอ่านมุม ' + (i + 1) + ' จาก ' + list.length + '…');
-      await readWithAI(page, list[i]);
+      state.figIndex = chosenBoxes().findIndex(x => x.box === list[i].box);
+      await readWithAI(list[i].page, list[i].box);
     }
+    state.figIndex = 0;
     status(null);
+    renderStep();
   }
 
   /* The deskewed page as base64, small enough to keep the request cheap and
@@ -912,6 +1114,8 @@
   async function findWithAI(page) {
     const key = getKey();
     if (!key) return;
+    page.finding = true;
+    if (state.step === 2) renderFind();
     status('กำลังให้ AI หารูปมุมในหน้านี้…');
     try {
       const d = page.deskewed;
@@ -934,9 +1138,10 @@
       toast('ค้นหารูปไม่สำเร็จ: ' + (e && e.message), 9000);
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
+    page.finding = false;
     status(null);
     renderPages();
-    renderAll();
+    renderStep();
     schedulePrepare(0);
   }
 
@@ -952,24 +1157,34 @@
   }
 
   function initControls() {
-    $('#btn-add').onclick = $('#btn-add2').onclick = () => $('#file-input').click();
+    const drop = $('#drop');
+    drop.onclick = () => $('#file-input').click();
+    drop.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); $('#file-input').click(); } };
     $('#file-input').onchange = ev => { addFiles(ev.target.files); ev.target.value = ''; };
     $('#btn-demo').onclick = addDemo;
-    $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
-    $('#btn-read').onclick = readSelected;
-    $('#btn-svg-all').onclick = downloadAllSvg;
-    $('#btn-all').onclick = () => {
-      const p = active(); if (!p) return;
-      p.boxes.forEach(b => { b.selected = true; });
-      renderGallery(); renderBoxes();
+    $('#btn-restart').onclick = () => {
+      if (!confirm('เริ่มใหม่ทั้งหมด? รูปและค่าที่แก้ไว้จะหายไป')) return;
+      for (const p of state.pages) for (const b of p.boxes) invalidateBox(b);
+      state.pages = []; state.activeId = null; state.selected = null; state.figIndex = 0; fullRes = null;
+      goStep(1);
     };
-    $('#btn-none').onclick = () => {
-      const p = active(); if (!p) return;
-      p.boxes.forEach(b => { b.selected = false; });
-      renderGallery(); renderBoxes();
+
+    $('#btn-back').onclick = () => {
+      if (state.step === 4 && state.figIndex > 0) { state.figIndex--; renderCustomize(); renderActions(); return; }
+      goStep(state.step - 1);
     };
-    $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
-    $('#btn-zip').onclick = exportZip;
+    $('#btn-next').onclick = () => {
+      if (state.step === 3) { readSelected(); return; }
+      if (state.step === 4) {
+        const list = chosenBoxes();
+        if (state.figIndex < list.length - 1) { state.figIndex++; renderCustomize(); renderActions(); return; }
+      }
+      goStep(state.step + 1);
+    };
+    window.addEventListener('popstate', ev => {
+      const n = ev.state && ev.state.step ? ev.state.step : (parseInt(location.hash.slice(1), 10) || 1);
+      goStep(n, { push: false });
+    });
 
     syncKeyPanel();
     $('#btn-key-save').onclick = () => {
@@ -979,16 +1194,14 @@
       $('#in-key').value = '';
       syncKeyPanel();
       toast('บันทึกคีย์แล้ว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น', 5000);
+      const p = active();
+      if (p && p.ready && !p.searched) findWithAI(p);
     };
     $('#btn-key-clear').onclick = () => { setKey(''); syncKeyPanel(); };
-    $('#btn-read').onclick = () => {
-      const page = active();
-      if (!page) return;
-      const box = page.boxes.find(b => b.id === state.selected) || page.boxes[0];
-      if (!box) { toast('เลือกรูปที่ต้องการก่อน', 3000); return; }
-      readWithAI(page, box);
-    };
+    $('#in-key').onkeydown = ev => { if (ev.key === 'Enter') $('#btn-key-save').click(); };
 
+    $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
+    $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
     angle.onchange = () => {
@@ -1000,6 +1213,17 @@
       processActive(true);
     };
 
+    $('#btn-all').onclick = () => {
+      for (const p of state.pages) p.boxes.forEach(b => { b.selected = true; });
+      renderSelect(); renderActions();
+    };
+    $('#btn-none').onclick = () => {
+      for (const p of state.pages) p.boxes.forEach(b => { b.selected = false; });
+      renderSelect(); renderActions();
+    };
+
+    $('#btn-svg-all').onclick = downloadAllSvg;
+    $('#btn-zip').onclick = exportZip;
     $('#in-mode').onchange = ev => {
       state.settings.mode = ev.target.value;
       invalidateAll(); schedulePrepare(); renderList();
@@ -1019,7 +1243,7 @@
       /* Strip only what a filesystem rejects. A \w class here would be ASCII-only
          and would quietly delete every Thai character the user typed. */
       state.settings.prefix = ev.target.value.replace(/[\/\\:*?"<>|]/g, '');
-      renderBoxes(); renderList();
+      renderBoxes(); renderStep();
     };
 
     let dragDepth = 0;
@@ -1035,15 +1259,17 @@
       document.body.classList.remove('dragging');
       if (ev.dataTransfer && ev.dataTransfer.files.length) addFiles(ev.dataTransfer.files);
     });
-    window.addEventListener('resize', () => { if (active() && active().ready) renderAll(); });
+    window.addEventListener('resize', () => { if (state.step === 2) renderFind(); });
   }
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
   AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
              readWithAI, readSelected, findWithAI, downloadSvg, downloadAllSvg,
-             setAngleLabel, renderGallery, getKey, bytesToBase64, pageBase64 };
+             setAngleLabel, renderStep, goStep, chosenBoxes, getKey, bytesToBase64, pageBase64 };
 
   initControls();
   initEditing();
+  try { history.replaceState({ step: 1 }, '', '#1'); } catch (e) { /* file:// */ }
+  renderStep();
   if (/[?&]demo/.test(location.search)) addDemo();
 })();

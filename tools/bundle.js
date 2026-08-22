@@ -9,8 +9,11 @@ const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 
 let html = read('index.html');
 
+/* Local stylesheets are inlined; a remote one (the Google Fonts link) is left
+   as it is — it loads when there is a network and falls back to the system
+   Thai fonts in the stack when there is not. */
 html = html.replace(/<link rel="stylesheet" href="([^"]+)">/g, (m, href) =>
-  '<style>\n' + read(href) + '</style>');
+  /^https?:/.test(href) ? m : '<style>\n' + read(href) + '</style>');
 
 html = html.replace(/<script src="([^"]+)"><\/script>/g, (m, src) => {
   const code = read(src);
@@ -29,6 +32,6 @@ fs.writeFileSync(path.join(dir, 'angles-maker.html'), html);
 fs.writeFileSync(path.join(dir, 'index.html'), html);
 const kb = (Buffer.byteLength(html) / 1024).toFixed(0);
 console.log('wrote dist/index.html and dist/angles-maker.html (' + kb + ' KB each, no external files)');
-if (/(src|href)="(?!data:)[^"]+"/.test(html.replace(/<a [^>]*>/g, ''))) {
-  console.warn('warning: a reference to an external file survived bundling');
-}
+const leftovers = (html.replace(/<a [^>]*>/g, '').match(/(src|href)="(?!data:|#|https?:\/\/fonts\.)[^"]+"/g) || [])
+  .filter(x => !/^href="https:\/\/aistudio/.test(x));
+if (leftovers.length) console.warn('warning: references survived bundling:', leftovers.join(', '));

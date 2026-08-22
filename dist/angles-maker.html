@@ -4,345 +4,478 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com">
+      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com">
 <title>Angles Maker — ตัดรูปมุมจากหน้าหนังสือ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap">
 <style>
+/* Angles Maker — a step-by-step tool for teachers.
+   Tokens first; everything below reads from them. */
 :root {
-  --bg: #f6f6f4;
-  --panel: #ffffff;
-  --ink: #1a1a19;
-  --muted: #6b6b66;
-  --line: #e0e0da;
-  --accent: #b4472e;
-  --accent-soft: #b4472e22;
-  --stage: #2b2b29;
-  --radius: 8px;
+  --bg: #F8FAFC;
+  --surface: #FFFFFF;
+  --ink: #0F172A;
+  --ink-2: #334155;
+  --muted: #64748B;          /* 4.6:1 on white */
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --accent: #2563EB;
+  --accent-ink: #1D4ED8;
+  --accent-soft: #EFF6FF;
+  --danger: #DC2626;
+  --danger-soft: #FEF2F2;
+  --ok: #15803D;
+  --ok-soft: #F0FDF4;
+  --warn: #B45309;
+  --warn-soft: #FFFBEB;
+  --stage: #1E293B;
+  --r-sm: 8px; --r: 12px; --r-lg: 16px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --shadow-1: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.08);
+  --shadow-2: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.06);
+  --ease: cubic-bezier(.2,.8,.2,1);
+  --t: 180ms;
+  --actions-h: 72px;
 }
 * { box-sizing: border-box; }
-/* .drop, .side and friends set display, which outranks the user-agent rule for
-   [hidden] and leaves them visible underneath the page. */
 [hidden] { display: none !important; }
-html, body { height: 100%; }
-/* iOS Safari's toolbars make 100vh taller than the visible area; dvh tracks it. */
-@supports (height: 100dvh) { html, body { height: 100dvh; } }
+html { -webkit-text-size-adjust: 100%; }
+html, body { min-height: 100%; }
+@supports (height: 100dvh) { html, body { min-height: 100dvh; } }
 body {
   margin: 0;
-  font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Sukhumvit Set", "Noto Sans Thai",
-        "Leelawadee UI", Thonburi, "Segoe UI", "Helvetica Neue", sans-serif;
+  font: 16px/1.7 "Noto Sans Thai", "Sukhumvit Set", "Leelawadee UI", Thonburi,
+        -apple-system, "Segoe UI", sans-serif;
   color: var(--ink);
   background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  padding-bottom: calc(var(--actions-h) + env(safe-area-inset-bottom, 0px));
 }
-.bar {
+a { color: var(--accent-ink); }
+code { background: #F1F5F9; border-radius: 6px; padding: 1px 6px; font-size: .9em; }
+.muted { color: var(--muted); }
+.center { text-align: center; }
+.spacer { flex: 1; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---- header ---- */
+.top {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
-  flex: none;
+  padding: var(--s3) var(--s4); background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 650; letter-spacing: -0.01em; }
-.brand .sub { font-weight: 400; color: var(--muted); margin-left: 10px; font-size: 13px; }
-.bar-actions { display: flex; gap: 8px; }
+.brand { display: flex; align-items: center; gap: var(--s2); font-weight: 700; letter-spacing: -.01em; }
+.brand-mark { width: 14px; height: 14px; border-radius: 4px; background: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--accent-soft); }
 
-button {
-  font: inherit; padding: 7px 13px; border-radius: var(--radius);
-  border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+/* ---- stepper ---- */
+.stepper { background: var(--surface); border-bottom: 1px solid var(--border); }
+.stepper ol {
+  list-style: none; margin: 0 auto; padding: var(--s3) var(--s4);
+  display: flex; gap: var(--s2); max-width: 1040px; overflow-x: auto; scrollbar-width: none;
 }
-button:hover { background: #f0efec; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover { filter: brightness(1.08); }
-button.big { padding: 11px 20px; font-size: 15px; margin-top: 6px; }
-button:disabled { opacity: 0.45; cursor: default; }
+.stepper ol::-webkit-scrollbar { display: none; }
+.stepper li {
+  flex: 1 0 auto; display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2) var(--s3); border-radius: 999px; min-height: 44px;
+  color: var(--muted); font-size: 14px; font-weight: 500; white-space: nowrap;
+  transition: background var(--t) var(--ease), color var(--t) var(--ease);
+}
+.stepper li .dot {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid var(--border-strong); font-size: 13px; font-weight: 700; flex: none;
+  background: var(--surface);
+}
+.stepper li .dot svg { width: 14px; height: 14px; }
+.stepper li.done { color: var(--ink-2); cursor: pointer; }
+.stepper li.done:hover { background: var(--bg); }
+.stepper li.done .dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+.stepper li.current { color: var(--accent-ink); background: var(--accent-soft); }
+.stepper li.current .dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (max-width: 560px) {
+  .stepper li:not(.current) .lbl { display: none; }
+  .stepper li { flex: 0 0 auto; }
+  .stepper li.current { flex: 1; }
+}
 
-.pages {
-  display: flex; gap: 8px; padding: 8px 16px; background: var(--panel);
-  border-bottom: 1px solid var(--line); overflow-x: auto; flex: none;
+/* ---- main / steps ---- */
+main { max-width: 1040px; margin: 0 auto; padding: var(--s5) var(--s4) var(--s6); }
+main:focus { outline: none; }
+.step { display: flex; flex-direction: column; gap: var(--s4); animation: rise var(--t) var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.step-head h1 { font-size: 22px; font-weight: 700; margin: 0 0 var(--s1); line-height: 1.45; }
+.step-head p { margin: 0; color: var(--muted); }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--s4); box-shadow: var(--shadow-1);
 }
+.card-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s2); }
+.card-head h2 { font-size: 15px; font-weight: 700; margin: 0; flex: 1; }
+.ico { width: 20px; height: 20px; flex: none; }
+.chip {
+  font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px;
+  background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+}
+.chip.ok { background: var(--ok-soft); color: var(--ok); border-color: #BBF7D0; }
+.chip.busy { background: var(--warn-soft); color: var(--warn); border-color: #FDE68A; }
+.chip.acc { background: var(--accent-soft); color: var(--accent-ink); border-color: #BFDBFE; }
+
+details.tools summary { cursor: pointer; font-weight: 600; color: var(--ink-2); list-style: none;
+  display: flex; align-items: center; gap: var(--s2); min-height: 28px; }
+details.tools summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform var(--t) var(--ease); }
+details.tools[open] summary::before { transform: rotate(45deg); }
+details.tools[open] summary { margin-bottom: var(--s3); }
+details.tools > :not(summary) { margin-top: var(--s3); }
+
+/* ---- buttons ---- */
+.btn {
+  font: inherit; font-weight: 600; font-size: 15px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  min-height: 44px; padding: 0 var(--s4); border-radius: var(--r);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink);
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease),
+              transform 120ms var(--ease), box-shadow var(--t) var(--ease);
+  touch-action: manipulation;
+}
+.btn:hover { background: var(--bg); }
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: var(--shadow-1); }
+.btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+.btn.ghost { background: transparent; }
+.btn.link { border: 0; background: transparent; color: var(--accent-ink); min-height: 44px; }
+.btn.sm { min-height: 36px; padding: 0 var(--s3); font-size: 14px; }
+.btn.lg { min-height: 52px; font-size: 16px; }
+.btn.full { width: 100%; }
+.btn .ico { width: 18px; height: 18px; }
+
+/* ---- fields ---- */
+.field { display: flex; flex-direction: column; gap: var(--s1); }
+.field > span { font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+  display: flex; justify-content: space-between; }
+.field output { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.field small { color: var(--muted); font-size: 12.5px; }
+.field.grow { flex: 1; }
+.field-row { display: flex; gap: var(--s3); align-items: flex-end; flex-wrap: wrap; }
+input[type=text], input[type=password], select {
+  font: inherit; min-height: 44px; padding: 0 var(--s3); border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); width: 100%;
+}
+input[type=range] { width: 100%; accent-color: var(--accent); min-height: 44px; }
+.check { display: flex; align-items: center; gap: var(--s2); min-height: 44px; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+/* ---- step 1: drop ---- */
+.drop {
+  border: 2px dashed var(--border-strong); border-radius: var(--r-lg); background: var(--surface);
+  padding: var(--s7) var(--s5); text-align: center; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
+  transition: border-color var(--t) var(--ease), background var(--t) var(--ease);
+}
+.drop:hover, body.dragging .drop { border-color: var(--accent); background: var(--accent-soft); }
+.drop-ico { width: 40px; height: 40px; color: var(--accent); }
+.drop strong { font-size: 17px; }
+.key-card .chip { margin-left: auto; }
+
+.page-strip { display: flex; gap: var(--s2); overflow-x: auto; padding: var(--s1) 0; }
 .thumb {
-  position: relative; border: 2px solid transparent; border-radius: 6px;
-  padding: 0; background: #ddd; cursor: pointer; flex: none; line-height: 0;
+  position: relative; border: 2px solid transparent; border-radius: var(--r-sm);
+  padding: 0; background: #E2E8F0; cursor: pointer; flex: none; line-height: 0;
+  transition: border-color var(--t) var(--ease);
 }
-.thumb img { height: 54px; width: auto; border-radius: 4px; display: block; }
+.thumb img { height: 64px; width: auto; border-radius: 6px; display: block; }
 .thumb.active { border-color: var(--accent); }
-.thumb .badge {
-  position: absolute; right: -5px; top: -6px; background: var(--ink); color: #fff;
-  border-radius: 9px; font-size: 10px; padding: 1px 5px; line-height: 1.4;
-}
-.thumb .x {
-  position: absolute; left: -6px; top: -6px; background: var(--panel); color: var(--muted);
-  border: 1px solid var(--line); border-radius: 50%; width: 17px; height: 17px;
-  font-size: 11px; line-height: 15px; text-align: center; display: none;
-}
+.thumb .badge { position: absolute; right: -6px; top: -6px; background: var(--ink); color: #fff;
+  border-radius: 9px; font-size: 11px; padding: 1px 6px; line-height: 1.4; }
+.thumb .x { position: absolute; left: -6px; top: -6px; background: var(--surface); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 50%; width: 20px; height: 20px; font-size: 12px;
+  line-height: 18px; text-align: center; display: none; }
 .thumb:hover .x { display: block; }
 
-main { flex: 1; display: flex; min-height: 0; }
-.stage { flex: 1; position: relative; background: var(--stage); overflow: hidden; }
-.workspace { position: absolute; inset: 0; display: flex; flex-direction: column; }
-.page-view { flex: 0 0 34%; min-height: 160px; overflow: auto; padding: 14px;
-  display: flex; align-items: center; justify-content: center; }
-.gallery { flex: 1; overflow-y: auto; background: var(--bg); padding: 14px;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;
-  align-content: start; }
-.gallery-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 30px 12px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-.card.off { opacity: 0.5; }
-.card-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.card-name { font-weight: 650; flex: 1; }
-.card-state { font-size: 11.5px; color: var(--muted); background: var(--bg);
-  border-radius: 10px; padding: 1px 8px; }
-.card-state.done { color: var(--accent); background: var(--accent-soft); }
-.card-state.busy { color: #7a5b00; background: #f7edd0; }
-.card-body { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
-.card-body figure { margin: 0; border: 1px solid var(--line); border-radius: 7px; padding: 6px;
-  background: #fff; }
-.card-body figcaption { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-.card-body img, .card-body canvas, .svg-holder svg { max-width: 100%; height: auto; display: block;
-  margin: 0 auto; }
-.svg-holder { touch-action: none; }
-.angles { margin: 8px 0 6px; display: flex; flex-direction: column; gap: 5px; }
-.angle-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.angle-at { color: var(--muted); min-width: 62px; }
-.angle-row input { flex: 1; padding: 4px 7px; }
-.angle-measured { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 46px;
-  text-align: right; }
-.box.off { opacity: 0.35; }
-.canvas-wrap { position: relative; margin: 0 auto; line-height: 0; }
+/* ---- step 2: page view + boxes ---- */
+.page-view { background: var(--stage); border-radius: var(--r-lg); padding: var(--s3);
+  display: flex; justify-content: center; min-height: 280px; max-height: 62vh; overflow: auto; }
+.canvas-wrap { position: relative; line-height: 0; }
 .canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
-  box-shadow: 0 2px 18px #0006; border-radius: 2px; }
-.overlay {
-  position: absolute; inset: 0; cursor: crosshair;
-  /* Without this a finger drag scrolls the page instead of drawing a box, so
-     on a touch screen no figure can be added by hand at all. */
-  touch-action: none;
-  -webkit-user-select: none; user-select: none;
-  -webkit-touch-callout: none;
-}
-
-.box {
-  position: absolute; border: 2px solid var(--accent); background: #b4472e14;
-  cursor: move;
-}
-.box .tag {
-  position: absolute; left: -2px; top: -21px; background: var(--accent); color: #fff;
-  font-size: 11px; padding: 1px 6px; border-radius: 4px 4px 0 0; white-space: nowrap;
-}
-.box.sel { border-width: 2px; box-shadow: 0 0 0 2px #fff9, 0 0 0 4px var(--accent); }
-.box .h {
-  position: absolute; width: 11px; height: 11px; background: #fff;
-  border: 1.5px solid var(--accent); border-radius: 2px;
-}
-.box .h.nw { left: -6px; top: -6px; cursor: nwse-resize; }
-.box .h.ne { right: -6px; top: -6px; cursor: nesw-resize; }
-.box .h.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
-.box .h.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
-.box .h.n { left: 50%; top: -6px; margin-left: -5px; cursor: ns-resize; }
-.box .h.s { left: 50%; bottom: -6px; margin-left: -5px; cursor: ns-resize; }
-.box .h.w { left: -6px; top: 50%; margin-top: -5px; cursor: ew-resize; }
-.box .h.e { right: -6px; top: 50%; margin-top: -5px; cursor: ew-resize; }
-
-.drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  padding: 30px; text-align: center; color: #efeee9; }
-.drop-inner { max-width: 460px; }
-.drop h1 { font-size: 22px; font-weight: 620; margin: 0 0 12px; line-height: 1.5; }
-.drop p { color: #bdbcb4; margin: 0 0 8px; }
-.drop .muted { font-size: 12.5px; color: #8f8e86; margin-top: 14px; }
-body.dragging .drop { outline: 3px dashed var(--accent); outline-offset: -14px; }
-
-.status {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  background: #000000cc; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px;
-}
-
-.side {
-  width: 320px; flex: none; background: var(--panel); border-left: 1px solid var(--line);
-  overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px;
-}
-.panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
-.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.panel h2 { font-size: 13px; letter-spacing: 0.01em;
-  color: var(--muted); margin: 0; font-weight: 700; }
-.pill { background: var(--accent-soft); color: var(--accent); border-radius: 10px;
-  padding: 1px 8px; font-size: 12px; font-weight: 650; }
-.hint { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; line-height: 1.75; }
-kbd { background: var(--bg); border: 1px solid var(--line); border-bottom-width: 2px;
-  border-radius: 4px; padding: 0 4px; font: inherit; font-size: 11px; }
-
-.field { display: block; margin-bottom: 11px; }
-.field > span { display: flex; justify-content: space-between; font-size: 12.5px;
-  color: var(--muted); margin-bottom: 4px; }
-.field output { color: var(--ink); font-variant-numeric: tabular-nums; }
-.field small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 4px;
-  line-height: 1.6; }
-input[type=range] { width: 100%; accent-color: var(--accent); }
-input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
-  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
-.check { display: flex; align-items: center; gap: 7px; font-size: 13px; margin-bottom: 11px; }
-.row { display: flex; gap: 8px; margin-top: 4px; }
-.row button { flex: 1; }
-
-.fig-list { display: flex; flex-direction: column; gap: 6px; max-height: 42vh; overflow-y: auto; }
-.fig {
-  display: flex; align-items: center; gap: 8px; padding: 5px; border: 1px solid var(--line);
-  border-radius: 6px; cursor: pointer; background: var(--panel);
-}
-.fig.sel { border-color: var(--accent); background: var(--accent-soft); }
-.fig canvas { width: 54px; height: 38px; object-fit: contain; background: #fff;
-  border: 1px solid var(--line); border-radius: 3px; flex: none; }
-.fig .name { flex: 1; min-width: 0; font-size: 12.5px; }
-.fig .name input { width: 100%; border: 0; background: transparent; font: inherit; padding: 2px; }
-.fig .name input:focus { background: var(--bg); border-radius: 4px; outline: 1px solid var(--line); }
-.fig .dl {
-  border: 0; background: transparent; padding: 4px 8px; font-size: 15px;
-  color: var(--muted); text-decoration: none; flex: none; line-height: 1;
-  display: inline-block; border-radius: 6px;
-}
-a.dl { color: var(--accent); font-weight: 700; }
-a.dl:hover { background: var(--accent-soft); }
-.fig .dl.waiting { color: var(--line); letter-spacing: 1px; font-size: 11px; cursor: default; }
-.empty { color: var(--muted); font-size: 12.5px; padding: 10px 2px; }
-
-.compare { position: fixed; inset: 0; background: #0009; z-index: 30; display: flex;
-  align-items: center; justify-content: center; padding: 20px; }
-.compare-inner { background: var(--panel); border-radius: 12px; padding: 18px; max-width: 900px;
-  width: 100%; max-height: 92vh; overflow: auto; }
-.compare-inner header { display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 6px; }
-.compare-inner h2 { font-size: 16px; margin: 0; }
-.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
-.compare-grid figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
-  background: #fff; }
-.compare-grid figcaption { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-.compare-grid img, .compare-grid svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-.conflict { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 8px 10px;
-  border-radius: 0 6px 6px 0; margin-bottom: 6px; font-size: 12.5px; }
-.ok-note { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
-code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-@media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
-
-.toast {
-  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
-  background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px;
-  font-size: 13px; max-width: 70ch; box-shadow: 0 6px 24px #0004; z-index: 20;
-}
-.toast code { background: #ffffff22; padding: 1px 5px; border-radius: 4px; }
-/* Fingers need a bigger target than a mouse, and on a phone-sized canvas the
-   eight handles of a box overlap into an unreadable cluster — keep the corners,
-   which are enough to resize with, and drop the edge handles. */
-.touch-only { display: none; }
-
+  border-radius: 2px; box-shadow: 0 2px 18px #0006; }
+.overlay { position: absolute; inset: 0; touch-action: none; -webkit-user-select: none; user-select: none; }
+.box { position: absolute; border: 2px solid var(--accent); background: #2563EB14; cursor: move; }
+.box.off { opacity: .35; }
+.box .tag { position: absolute; left: -2px; top: -22px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px 4px 0 0; white-space: nowrap; }
+.box.sel { box-shadow: 0 0 0 2px #fff9, 0 0 0 4px var(--accent); }
+.box .h { position: absolute; width: 12px; height: 12px; background: #fff; border: 2px solid var(--accent);
+  border-radius: 3px; }
+.box .h.nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.box .h.ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.box .h.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.box .h.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.box .h.n { left: 50%; top: -7px; margin-left: -6px; cursor: ns-resize; }
+.box .h.s { left: 50%; bottom: -7px; margin-left: -6px; cursor: ns-resize; }
+.box .h.w { left: -7px; top: 50%; margin-top: -6px; cursor: ew-resize; }
+.box .h.e { right: -7px; top: 50%; margin-top: -6px; cursor: ew-resize; }
 @media (pointer: coarse) {
-  .touch-only { display: block; }
-  .box .h { width: 15px; height: 15px; border-width: 2px; }
-  .box .h.nw, .box .h.sw { left: -8px; }
-  .box .h.ne, .box .h.se { right: -8px; }
-  .box .h.nw, .box .h.ne { top: -8px; }
-  .box .h.sw, .box .h.se { bottom: -8px; }
+  .box .h { width: 16px; height: 16px; }
   .box .h.n, .box .h.s, .box .h.e, .box .h.w { display: none; }
-  .fig .dl { padding: 8px 10px; font-size: 18px; }
-  button { padding: 9px 14px; }
 }
 
-@media (max-width: 860px) {
-  main { flex-direction: column; }
-  .stage { min-height: 54vh; flex: none; }
-  .side { width: auto; border-left: 0; border-top: 1px solid var(--line);
-          max-height: none; overflow-y: visible; }
-  body { overflow: auto; }
-  .bar { flex-wrap: wrap; gap: 8px; }
-  .brand .sub { display: block; margin-left: 0; }
+/* ---- step 3: select grid ---- */
+.bar-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--s3); }
+.pick {
+  position: relative; background: var(--surface); border: 2px solid var(--border); border-radius: var(--r);
+  padding: var(--s2); cursor: pointer; display: flex; flex-direction: column; gap: var(--s2);
+  transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
 }
+.pick:hover { border-color: var(--border-strong); }
+.pick.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pick .tick { position: absolute; top: 10px; left: 10px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--border-strong); display: grid; place-items: center;
+  color: #fff; }
+.pick.on .tick { background: var(--accent); border-color: var(--accent); }
+.pick .tick svg { width: 14px; height: 14px; display: none; }
+.pick.on .tick svg { display: block; }
+.pick .pic { aspect-ratio: 4 / 3; background: #fff; border-radius: var(--r-sm); overflow: hidden;
+  display: grid; place-items: center; border: 1px solid var(--border); }
+.pick .pic img, .pick .pic canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+.pick .name { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 14px; }
+.pick .name .chip { font-weight: 500; }
+.empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: var(--s6) var(--s4);
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--r); }
+
+/* ---- step 4: customise ---- */
+.fig-nav { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.fig-nav .pill {
+  min-height: 36px; padding: 0 var(--s3); border-radius: 999px; border: 1px solid var(--border-strong);
+  background: var(--surface); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px;
+}
+.fig-nav .pill.current { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fig-nav .pill .st { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+.fig-nav .pill.ready .st { background: var(--ok); }
+.fig-nav .pill.warn .st { background: var(--warn); }
+.twoup { display: grid; grid-template-columns: 1fr; gap: var(--s3); }
+@media (min-width: 760px) { .twoup { grid-template-columns: 1fr 1fr; } }
+.twoup figure { margin: 0; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: var(--s3); box-shadow: var(--shadow-1); }
+.twoup figcaption { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: var(--s2); }
+.twoup img, .twoup canvas, .svg-holder svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.svg-holder { touch-action: none; }
+.angles { display: flex; flex-direction: column; gap: var(--s2); }
+.angle-row { display: grid; grid-template-columns: 92px 1fr 64px; align-items: center; gap: var(--s2); }
+.angle-row .at { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.angle-row input { min-height: 44px; }
+.angle-row .meas { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; }
+.notice { display: flex; gap: var(--s2); align-items: flex-start; padding: var(--s3); border-radius: var(--r-sm);
+  font-size: 14px; line-height: 1.6; }
+.notice .ico { margin-top: 2px; }
+.notice.warn { background: var(--warn-soft); color: #78350F; border: 1px solid #FDE68A; }
+.notice.ok { background: var(--ok-soft); color: #14532D; border: 1px solid #BBF7D0; }
+.notice.info { background: var(--accent-soft); color: #1E3A8A; border: 1px solid #BFDBFE; }
+.busy-block { display: flex; flex-direction: column; align-items: center; gap: var(--s3);
+  padding: var(--s7) var(--s4); color: var(--muted); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r); }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--border);
+  border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- step 5: export ---- */
+.export-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--s3); }
+.ex {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: var(--s3); display: flex; flex-direction: column; gap: var(--s2); box-shadow: var(--shadow-1);
+}
+.ex .pic { background: #fff; border: 1px solid var(--border); border-radius: var(--r-sm);
+  aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; }
+.ex .pic svg, .ex .pic img { max-width: 100%; max-height: 100%; }
+.ex .row { display: flex; align-items: center; gap: var(--s2); }
+.ex .row strong { flex: 1; font-size: 14px; }
+a.btn { text-decoration: none; }
+
+/* ---- sticky actions ---- */
+.actions {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom, 0px));
+  background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+}
+.actions > * { max-width: 1040px; }
+.actions .btn { min-width: 120px; }
+@media (min-width: 1040px) {
+  .actions { padding-left: calc((100vw - 1040px) / 2 + var(--s4)); padding-right: calc((100vw - 1040px) / 2 + var(--s4)); }
+}
+
+/* ---- status / toast ---- */
+.status {
+  position: fixed; left: 50%; top: 16px; transform: translateX(-50%); z-index: 30;
+  background: var(--ink); color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 14px;
+  box-shadow: var(--shadow-2); display: flex; align-items: center; gap: var(--s2);
+}
+.status::before { content: ""; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid #ffffff55; border-top-color: #fff; animation: spin .8s linear infinite; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(var(--actions-h) + 14px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%); z-index: 30; background: var(--ink); color: #fff;
+  padding: 10px 16px; border-radius: var(--r); font-size: 14px; max-width: min(92vw, 60ch);
+  box-shadow: var(--shadow-2);
+}
+.toast code { background: #ffffff22; color: #fff; }
 </style>
 </head>
 <body>
-<header class="bar">
-  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → มุมที่แก้ไขค่าได้ → SVG สำหรับ Word</span></div>
-  <div class="bar-actions">
-    <button id="btn-add" class="primary">เพิ่มรูปภาพ…</button>
-    <button id="btn-demo" class="ghost">หน้าตัวอย่าง</button>
-    <input id="file-input" type="file" accept="image/*" multiple hidden>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0-4-4m4 4 4-4"/><path d="M4 18v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.85 12.15 8.15-8.15M18 6l2 2M15 9l2 2"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>Angles Maker</span>
   </div>
+  <button id="btn-restart" class="btn ghost sm" hidden>เริ่มใหม่</button>
 </header>
 
-<div id="pages" class="pages" hidden></div>
+<nav class="stepper" aria-label="ขั้นตอน">
+  <ol id="stepper">
+    <li data-step="1"><span class="dot">1</span><span class="lbl">อัปโหลด</span></li>
+    <li data-step="2"><span class="dot">2</span><span class="lbl">ค้นหารูป</span></li>
+    <li data-step="3"><span class="dot">3</span><span class="lbl">เลือกรูป</span></li>
+    <li data-step="4"><span class="dot">4</span><span class="lbl">ปรับแต่ง</span></li>
+    <li data-step="5"><span class="dot">5</span><span class="lbl">ส่งออก</span></li>
+  </ol>
+</nav>
 
-<main>
-  <section class="stage">
-    <div id="drop" class="drop">
-      <div class="drop-inner">
-        <h1>ลากรูปถ่ายหน้าหนังสือมาวางตรงนี้</h1>
-        <p>โปรแกรมจะปรับหน้าให้ตรง ลบเงาออก แล้วให้ AI หารูปมุมทุกรูปในหน้านั้นเอง
-           คุณเพียงเลือกว่าจะใช้รูปไหน แก้ค่ามุมได้ตามต้องการ แล้วบันทึกเป็นไฟล์ SVG
-           ไปวางใน Word</p>
-        <button id="btn-add2" class="primary big">เลือกรูปภาพ…</button>
-        <p class="muted">รองรับ JPG, PNG, WebP · ต้องใส่ Gemini API key หนึ่งครั้งก่อนใช้งาน</p>
-      </div>
+<main id="main" tabindex="-1">
+
+  <!-- 1 ─ upload -->
+  <section class="step" data-step="1">
+    <div class="step-head">
+      <h1>เริ่มจากรูปถ่ายหน้าหนังสือ</h1>
+      <p>ถ่ายหน้าแบบฝึกหัดด้วยโทรศัพท์ แล้วลากมาวางตรงนี้ จะใส่กี่หน้าก็ได้</p>
     </div>
 
-    <div id="workspace" class="workspace" hidden>
-      <div id="page-view" class="page-view">
-        <div id="canvas-wrap" class="canvas-wrap">
-          <canvas id="page-canvas"></canvas>
-          <div id="overlay" class="overlay"></div>
-        </div>
-      </div>
-      <div id="gallery" class="gallery"></div>
+    <div id="drop" class="drop" role="button" tabindex="0" aria-label="เลือกรูปภาพ">
+      <svg class="drop-ico" aria-hidden="true"><use href="#i-upload"/></svg>
+      <strong>ลากรูปมาวาง หรือกดเพื่อเลือก</strong>
+      <span class="muted">JPG · PNG · WebP — ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์ ทุกอย่างทำในเครื่องนี้</span>
+      <input id="file-input" type="file" accept="image/*" multiple hidden>
     </div>
-    <div id="status" class="status" hidden></div>
-  </section>
+    <div class="center"><button id="btn-demo" class="btn link">หรือลองด้วยหน้าตัวอย่าง</button></div>
 
-  <aside class="side" id="side" hidden>
-    <div class="panel" id="ai-panel">
-      <div class="panel-head"><h2>Gemini</h2><span id="ai-state" class="pill">ยังไม่ใส่คีย์</span></div>
+    <div id="pages-1" class="page-strip" hidden></div>
+
+    <section class="card key-card" id="key-card" aria-labelledby="key-title">
+      <div class="card-head">
+        <svg class="ico" aria-hidden="true"><use href="#i-key"/></svg>
+        <h2 id="key-title">Gemini API key</h2>
+        <span id="ai-state" class="chip">ยังไม่ได้ใส่</span>
+      </div>
       <div id="key-unset">
-        <label class="field">
-          <span>API key</span>
-          <input id="in-key" type="password" spellcheck="false" autocomplete="off" placeholder="AIza…">
-          <small>ขอคีย์ฟรีที่ aistudio.google.com/apikey — เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น
-                 ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
-        </label>
-        <div class="row"><button id="btn-key-save" class="primary">บันทึกคีย์</button></div>
+        <p class="muted">ใช้ให้ AI หารูปมุมและอ่านค่าให้ — ขอคีย์ฟรีที่
+           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
+           ใส่ครั้งเดียว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้</p>
+        <div class="field-row">
+          <label class="field grow">
+            <span>API key</span>
+            <input id="in-key" type="password" spellcheck="false" autocomplete="off" placeholder="AIza…">
+          </label>
+          <button id="btn-key-save" class="btn primary">บันทึกคีย์</button>
+        </div>
       </div>
       <div id="key-set" hidden>
-        <p class="hint">ใช้คีย์ <code id="key-mask"></code></p>
-        <div class="row">
-          <button id="btn-find" class="ghost">ค้นหารูปใหม่</button>
-          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
-        </div>
+        <p class="muted">ใช้คีย์ <code id="key-mask"></code></p>
+        <button id="btn-key-clear" class="btn ghost sm">เปลี่ยนคีย์</button>
+      </div>
+    </section>
+  </section>
+
+  <!-- 2 ─ find -->
+  <section class="step" data-step="2" hidden>
+    <div class="step-head">
+      <h1>AI กำลังหารูปมุมในหน้านี้</h1>
+      <p id="find-status">ปรับหน้าให้ตรง ลบเงา แล้วให้ Gemini ตีกรอบรูปทุกรูป</p>
+    </div>
+    <div id="pages-2" class="page-strip" hidden></div>
+    <div id="page-view" class="page-view">
+      <div id="canvas-wrap" class="canvas-wrap">
+        <canvas id="page-canvas"></canvas>
+        <div id="overlay" class="overlay"></div>
       </div>
     </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>รูปที่พบ</h2><span id="fig-count" class="pill">0</span>
-      </div>
-      <div class="row">
-        <button id="btn-all" class="ghost">เลือกทั้งหมด</button>
-        <button id="btn-none" class="ghost">ไม่เลือกเลย</button>
-      </div>
-      <div class="row">
-        <button id="btn-read" class="primary">อ่านมุมที่เลือก</button>
-      </div>
-      <div class="row">
-        <button id="btn-svg-all" class="ghost">ดาวน์โหลด SVG ทั้งหมด</button>
-      </div>
-      <p class="hint" id="read-hint">เลือกรูปที่ต้องการแล้วกด “อ่านมุมที่เลือก”
-         AI จะแปลงรูปเป็นเส้นและมุมที่แก้ค่าได้</p>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h2>หน้ากระดาษ</h2></div>
+    <details class="card tools">
+      <summary>เครื่องมือหน้ากระดาษ</summary>
       <label class="field">
         <span>หมุนหน้ากระดาษ <output id="out-angle">0.0°</output></span>
         <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
       </label>
-      <label class="check"><input id="in-manual" type="checkbox"> เพิ่มกรอบเองได้ (ปกติไม่ต้องใช้)</label>
-      <p class="hint">เปิดไว้เมื่อ AI มองข้ามรูปบางรูป แล้วลากกรอบคลุมรูปนั้นบนหน้ากระดาษ</p>
-    </div>
+      <label class="check"><input id="in-manual" type="checkbox"> ลากกรอบเองบนหน้ากระดาษ (เมื่อ AI มองข้ามรูป)</label>
+      <button id="btn-find" class="btn ghost sm">ให้ AI ค้นหาใหม่</button>
+    </details>
+  </section>
 
-    <div class="panel">
-      <div class="panel-head"><h2>ไฟล์ภาพ</h2></div>
+  <!-- 3 ─ select -->
+  <section class="step" data-step="3" hidden>
+    <div class="step-head">
+      <h1>เลือกรูปที่ต้องการใช้</h1>
+      <p>ติ๊กเฉพาะรูปที่จะเอาไปทำข้อสอบ จ่ายค่า AI เฉพาะรูปที่เลือก</p>
+    </div>
+    <div class="bar-row">
+      <span id="select-count" class="muted">เลือกแล้ว 0 รูป</span>
+      <span class="spacer"></span>
+      <button id="btn-all" class="btn ghost sm">เลือกทั้งหมด</button>
+      <button id="btn-none" class="btn ghost sm">ไม่เลือกเลย</button>
+    </div>
+    <div id="select-grid" class="select-grid"></div>
+  </section>
+
+  <!-- 4 ─ customize -->
+  <section class="step" data-step="4" hidden>
+    <div class="step-head">
+      <h1 id="cust-title">ปรับแต่งรูป</h1>
+      <p>เทียบกับต้นฉบับ พิมพ์ค่ามุมใหม่แล้วรูปจะขยับตาม ลากจุดเพื่อย้ายเส้น</p>
+    </div>
+    <div id="fig-nav" class="fig-nav"></div>
+    <div id="cust-body"></div>
+  </section>
+
+  <!-- 5 ─ export -->
+  <section class="step" data-step="5" hidden>
+    <div class="step-head">
+      <h1>พร้อมนำไปใช้ใน Word</h1>
+      <p id="export-summary">—</p>
+    </div>
+    <div class="card">
+      <div class="field-row">
+        <label class="field grow">
+          <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
+          <input id="in-prefix" type="text" value="q" spellcheck="false">
+        </label>
+      </div>
+      <button id="btn-svg-all" class="btn primary lg full">
+        <svg class="ico" aria-hidden="true"><use href="#i-download"/></svg>
+        ดาวน์โหลด SVG ทั้งหมด (.zip)
+      </button>
+      <p class="muted center">ใน Word: แทรก → รูปภาพ → เลือกไฟล์ .svg · คลิกขวาที่รูปแล้วเลือก “แปลงเป็นรูปร่าง” ถ้าอยากแก้ใน Word</p>
+    </div>
+    <div id="export-list" class="export-list"></div>
+    <details class="card tools">
+      <summary>ตัวเลือกไฟล์ PNG (รูปต้นฉบับที่ทำความสะอาดแล้ว)</summary>
       <label class="field">
-        <span>รูปแบบภาพ (PNG)</span>
+        <span>รูปแบบภาพ</span>
         <select id="in-mode">
           <option value="gray">โทนเทาสะอาด</option>
           <option value="bw">ขาวดำล้วน</option>
@@ -354,16 +487,25 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
         <input id="in-width" type="range" min="0" max="2000" step="50" value="900">
       </label>
       <label class="check"><input id="in-bolder" type="checkbox"> ทำเส้นให้หนาขึ้น</label>
-      <label class="field">
-        <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
-        <input id="in-prefix" type="text" value="q" spellcheck="false">
-      </label>
-      <div class="row"><button id="btn-zip" class="ghost">ดาวน์โหลด PNG ทั้งหมด (.zip)</button></div>
-    </div>
-  </aside>
+      <button id="btn-zip" class="btn ghost full">ดาวน์โหลด PNG ทั้งหมด (.zip)</button>
+    </details>
+  </section>
+
 </main>
 
-<div id="toast" class="toast" hidden></div>
+<footer class="actions" id="actions">
+  <button id="btn-back" class="btn ghost">
+    <svg class="ico" aria-hidden="true"><use href="#i-back"/></svg> ย้อนกลับ
+  </button>
+  <span class="spacer"></span>
+  <button id="btn-next" class="btn primary">
+    <span id="btn-next-label">ถัดไป</span>
+    <svg class="ico" aria-hidden="true"><use href="#i-next"/></svg>
+  </button>
+</footer>
+
+<div id="status" class="status" role="status" aria-live="polite" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
 /* Angles Maker — shared helpers. Loads as a classic script in the browser and
@@ -2475,6 +2617,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     selected: null,
     undo: [],
     manual: false,
+    step: 1,
+    figIndex: 0,
     settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
   };
   /* Only ever one full-resolution deskewed page in memory: a 12 MP photo is
@@ -2607,7 +2751,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     status(null);
     syncControls();
     renderPages();
-    renderAll();
+    if (state.step < 2) goStep(2); else renderStep();
     schedulePrepare(0);
     if (getKey() && !page.searched) findWithAI(page);
   }
@@ -2648,15 +2792,16 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     return c.toDataURL('image/png');
   }
 
-  function renderPages() {
-    const wrap = $('#pages');
+  function renderPagesInto(wrap) {
+    if (!wrap) return;
     wrap.innerHTML = '';
-    wrap.hidden = state.pages.length < 1;
     state.pages.forEach((p, i) => {
       const b = el('button', 'thumb' + (p.id === state.activeId ? ' active' : ''));
+      b.type = 'button';
+      b.setAttribute('aria-label', 'หน้า ' + (i + 1));
       const img = el('img');
       img.src = p.thumb || '';
-      img.alt = 'หน้า ' + (i + 1);
+      img.alt = '';
       b.appendChild(img);
       b.appendChild(el('span', 'badge', String(p.boxes.length)));
       const x = el('span', 'x', '×');
@@ -2666,6 +2811,12 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       b.onclick = () => selectPage(p.id);
       wrap.appendChild(b);
     });
+  }
+  function renderPages() {
+    renderPagesInto($('#pages-1'));
+    renderPagesInto($('#pages-2'));
+    const s1 = $('#pages-1'); if (s1) s1.hidden = !state.pages.length;
+    const s2 = $('#pages-2'); if (s2) s2.hidden = state.pages.length < 2;
   }
 
   function removePage(id) {
@@ -2689,26 +2840,291 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     if (!active().ready) processActive(); else { syncControls(); renderAll(); }
   }
 
-  function renderAll() {
-    const page = active();
-    const has = !!(page && page.ready);
-    $('#drop').hidden = has;
-    $('#workspace').hidden = !has;
-    $('#side').hidden = !has;
-    if (!has) return;
+  /* ---------- the wizard ---------- */
 
+  const STEPS = 5;
+  const stepOf = n => document.querySelector('.step[data-step="' + n + '"]');
+
+  function canEnter(n) {
+    const pages = state.pages.filter(p => p.ready);
+    if (n <= 1) return true;
+    if (n === 2 || n === 3) return pages.length > 0;
+    if (n === 4) return pages.some(p => p.boxes.some(b => b.selected !== false));
+    if (n === 5) return pages.some(p => p.boxes.some(b => b.figure));
+    return false;
+  }
+
+  function goStep(n, opts) {
+    n = AM.util.clamp(n | 0, 1, STEPS);
+    while (n > 1 && !canEnter(n)) n--;
+    state.step = n;
+    if (!opts || opts.push !== false) {
+      try { history.pushState({ step: n }, '', '#' + n); } catch (e) { /* file:// */ }
+    }
+    renderStep();
+    const main = $('#main');
+    if (main) { main.focus({ preventScroll: true }); window.scrollTo({ top: 0, behavior: 'auto' }); }
+  }
+
+  function renderStepper() {
+    document.querySelectorAll('#stepper li').forEach(li => {
+      const n = +li.dataset.step;
+      li.classList.toggle('current', n === state.step);
+      li.classList.toggle('done', n < state.step);
+      li.setAttribute('aria-current', n === state.step ? 'step' : 'false');
+      const dot = li.querySelector('.dot');
+      dot.innerHTML = n < state.step
+        ? '<svg aria-hidden="true"><use href="#i-check"/></svg>' : String(n);
+      li.onclick = n < state.step ? () => goStep(n) : null;
+      li.tabIndex = n < state.step ? 0 : -1;
+      li.onkeydown = n < state.step ? (ev => { if (ev.key === 'Enter' || ev.key === ' ') goStep(n); }) : null;
+    });
+  }
+
+  function renderActions() {
+    const back = $('#btn-back'), next = $('#btn-next'), label = $('#btn-next-label');
+    const page = active();
+    back.hidden = state.step <= 1;
+    let text = 'ถัดไป', enabled = true, hide = false;
+    if (state.step === 1) {
+      enabled = state.pages.some(p => p.ready);
+      text = 'ถัดไป: ค้นหารูป';
+    } else if (state.step === 2) {
+      const n = state.pages.reduce((k, p) => k + p.boxes.length, 0);
+      enabled = n > 0;
+      text = n ? 'ถัดไป: เลือกรูป (' + n + ')' : 'ยังไม่พบรูป';
+    } else if (state.step === 3) {
+      const chosen = state.pages.reduce((k, p) => k + p.boxes.filter(b => b.selected !== false).length, 0);
+      const unread = state.pages.reduce((k, p) => k + p.boxes.filter(b => b.selected !== false && !b.figure).length, 0);
+      enabled = chosen > 0;
+      text = !chosen ? 'เลือกอย่างน้อย 1 รูป'
+           : unread ? 'อ่านมุม ' + unread + ' รูปด้วย AI' : 'ถัดไป: ปรับแต่ง';
+    } else if (state.step === 4) {
+      const list = chosenBoxes();
+      text = state.figIndex < list.length - 1 ? 'รูปถัดไป' : 'ถัดไป: ส่งออก';
+      enabled = list.length > 0;
+    } else if (state.step === 5) {
+      hide = true;
+    }
+    next.hidden = hide;
+    next.disabled = !enabled;
+    label.textContent = text;
+    $('#btn-restart').hidden = !state.pages.length;
+  }
+
+  function renderStep() {
+    for (let n = 1; n <= STEPS; n++) { const sec = stepOf(n); if (sec) sec.hidden = n !== state.step; }
+    renderStepper();
+    if (state.step === 1) renderUpload();
+    if (state.step === 2) renderFind();
+    if (state.step === 3) renderSelect();
+    if (state.step === 4) renderCustomize();
+    if (state.step === 5) renderExport();
+    renderActions();
+  }
+  const renderAll = renderStep;
+
+  /* Every figure the user ticked, across all pages, in order. */
+  function chosenBoxes() {
+    const out = [];
+    for (const p of state.pages) for (const b of p.boxes) if (b.selected !== false) out.push({ page: p, box: b });
+    return out;
+  }
+
+  /* ---- step 1 ---- */
+  function renderUpload() {
+    syncKeyPanel();
+    const strip = $('#pages-1');
+    strip.hidden = !state.pages.length;
+    renderPagesInto(strip);
+  }
+
+  /* ---- step 2 ---- */
+  function renderFind() {
+    const page = active();
+    const strip = $('#pages-2');
+    strip.hidden = state.pages.length < 2;
+    renderPagesInto(strip);
+    if (!page || !page.ready) return;
     const d = page.deskewed;
     const canvas = $('#page-canvas');
     canvas.width = d.w; canvas.height = d.h;
     canvas.getContext('2d').putImageData(
       new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
-
     const view = $('#page-view');
-    const availW = view.clientWidth - 28, availH = view.clientHeight - 28;
+    const availW = view.clientWidth - 24;
+    const availH = Math.max(240, Math.min(window.innerHeight * 0.62, 720) - 24);
     const width = Math.min(availW, availH * (d.w / d.h));
     $('#canvas-wrap').style.width = Math.max(100, width) + 'px';
+    const st = $('#find-status');
+    const n = page.boxes.length;
+    if (page.finding) st.textContent = 'Gemini กำลังตีกรอบรูปทุกรูปในหน้านี้…';
+    else if (!getKey()) st.textContent = 'ยังไม่ได้ใส่ Gemini API key — ใช้การหารูปแบบออฟไลน์แทน พบ ' + n + ' รูป (ใส่คีย์ในขั้นที่ 1 เพื่อให้แม่นขึ้น)';
+    else st.textContent = n ? 'พบ ' + n + ' รูปในหน้านี้ — ตรวจกรอบแล้วกดถัดไป' : 'ไม่พบรูปมุมในหน้านี้ — เปิด “เครื่องมือหน้ากระดาษ” แล้วลากกรอบเอง';
     renderBoxes();
-    renderGallery();
+  }
+
+  /* ---- step 3 ---- */
+  function renderSelect() {
+    const grid = $('#select-grid');
+    grid.innerHTML = '';
+    const all = [];
+    for (const p of state.pages) for (const b of p.boxes) all.push({ page: p, box: b });
+    const chosen = all.filter(x => x.box.selected !== false).length;
+    $('#select-count').textContent = 'เลือกแล้ว ' + chosen + ' จาก ' + all.length + ' รูป';
+    if (!all.length) {
+      const e = el('div', 'empty', 'ยังไม่มีรูปให้เลือก ย้อนกลับไปขั้นที่ 2 เพื่อค้นหา');
+      grid.appendChild(e);
+      return;
+    }
+    all.forEach(({ page, box }) => {
+      const on = box.selected !== false;
+      const card = el('div', 'pick' + (on ? ' on' : ''));
+      card.setAttribute('role', 'checkbox');
+      card.setAttribute('aria-checked', on ? 'true' : 'false');
+      card.tabIndex = 0;
+      const tick = el('span', 'tick');
+      tick.innerHTML = '<svg aria-hidden="true"><use href="#i-check"/></svg>';
+      card.appendChild(tick);
+      const pic = el('div', 'pic');
+      if (box.url) { const img = el('img'); img.src = box.url; img.alt = ''; pic.appendChild(img); }
+      else pic.appendChild(previewCanvas(page, box));
+      card.appendChild(pic);
+      const name = el('div', 'name');
+      name.appendChild(el('span', null, nameFor(page, box)));
+      const chip = el('span', 'chip' + (box.figure ? ' ok' : ''));
+      chip.textContent = box.figure ? 'อ่านแล้ว' : 'ยังไม่ได้อ่าน';
+      name.appendChild(chip);
+      card.appendChild(name);
+      const toggle = () => { box.selected = !(box.selected !== false); renderSelect(); renderActions(); };
+      card.onclick = toggle;
+      card.onkeydown = ev => { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); toggle(); } };
+      grid.appendChild(card);
+    });
+  }
+
+  /* ---- step 4 ---- */
+  function renderCustomize() {
+    const list = chosenBoxes();
+    const nav = $('#fig-nav'), body = $('#cust-body'), title = $('#cust-title');
+    nav.innerHTML = ''; body.innerHTML = '';
+    if (!list.length) {
+      title.textContent = 'ปรับแต่งรูป';
+      body.appendChild(el('div', 'empty', 'ยังไม่ได้เลือกรูป ย้อนกลับไปขั้นที่ 3'));
+      return;
+    }
+    state.figIndex = AM.util.clamp(state.figIndex, 0, list.length - 1);
+    list.forEach(({ page, box }, i) => {
+      const pill = el('button', 'pill' + (i === state.figIndex ? ' current' : '') +
+        (box.figure ? ((box.figure.conflicts || []).length ? ' warn' : ' ready') : ''));
+      pill.type = 'button';
+      pill.innerHTML = '<span class="st" aria-hidden="true"></span>' + nameFor(page, box);
+      pill.onclick = () => { state.figIndex = i; renderCustomize(); renderActions(); };
+      nav.appendChild(pill);
+    });
+    const { page, box } = list[state.figIndex];
+    title.textContent = 'ปรับแต่ง ' + nameFor(page, box) + ' (' + (state.figIndex + 1) + '/' + list.length + ')';
+
+    const two = el('div', 'twoup');
+    const crop = el('figure');
+    crop.appendChild(el('figcaption', null, 'ต้นฉบับจากหนังสือ'));
+    if (box.url) { const img = el('img'); img.src = box.url; img.alt = 'รูปต้นฉบับ'; crop.appendChild(img); }
+    else crop.appendChild(previewCanvas(page, box));
+    two.appendChild(crop);
+
+    const built = el('figure');
+    if (box.reading) {
+      built.appendChild(el('figcaption', null, 'สร้างใหม่จากที่ AI อ่าน'));
+      const bb = el('div', 'busy-block');
+      bb.appendChild(el('div', 'spinner'));
+      bb.appendChild(el('span', null, 'Gemini กำลังอ่านเส้นและมุม…'));
+      built.appendChild(bb);
+    } else if (box.figure) {
+      built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อย้ายเส้น'));
+      const holder = el('div', 'svg-holder');
+      holder.innerHTML = AM.svg.render(box.figure, { width: 420, interactive: true });
+      attachPointDrag(holder, page, box);
+      built.appendChild(holder);
+    } else {
+      built.appendChild(el('figcaption', null, 'ยังไม่ได้อ่าน'));
+      const bb = el('div', 'busy-block');
+      bb.appendChild(el('span', null, getKey() ? 'รูปนี้ยังไม่ได้ให้ AI อ่าน' : 'ต้องใส่ Gemini API key ในขั้นที่ 1 ก่อน'));
+      const b = el('button', 'btn primary sm', 'อ่านรูปนี้ด้วย AI');
+      b.onclick = () => readWithAI(page, box);
+      bb.appendChild(b);
+      built.appendChild(bb);
+    }
+    two.appendChild(built);
+    body.appendChild(two);
+
+    if (box.figure) {
+      const card = el('div', 'card');
+      const h = el('div', 'card-head');
+      h.appendChild(el('h2', null, 'ค่ามุม'));
+      const hint = el('span', 'chip acc', 'พิมพ์ค่าใหม่แล้วรูปขยับตาม');
+      h.appendChild(hint);
+      card.appendChild(h);
+      card.appendChild(angleEditor(page, box));
+      body.appendChild(card);
+
+      for (const c of box.figure.conflicts || []) {
+        const n = el('div', 'notice warn');
+        n.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg>';
+        n.appendChild(el('span', null, 'มุมที่จุด ' + c.vertex + ': ป้ายอ่านได้ ' + c.claimed +
+          '° แต่รูปที่วาดวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
+          ' — AI อาจอ่านตัวเลขผิด เทียบกับต้นฉบับแล้วพิมพ์ค่าที่ถูกในช่องด้านบน'));
+        body.appendChild(n);
+      }
+      if (!(box.figure.conflicts || []).length) {
+        const n = el('div', 'notice ok');
+        n.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>';
+        n.appendChild(el('span', null, 'ตัวเลขบนป้ายกับรูปที่วาดตรงกันทุกมุม'));
+        body.appendChild(n);
+      }
+      if (box.figure.notes) {
+        const n = el('div', 'notice info');
+        n.appendChild(el('span', null, 'หมายเหตุจาก AI: ' + box.figure.notes));
+        body.appendChild(n);
+      }
+      const row = el('div', 'bar-row');
+      const again = el('button', 'btn ghost sm', 'ให้ AI อ่านใหม่');
+      again.onclick = () => readWithAI(page, box);
+      row.appendChild(again);
+      const dl = el('button', 'btn ghost sm', 'ดาวน์โหลด SVG รูปนี้');
+      dl.onclick = () => downloadSvg(page, box);
+      row.appendChild(dl);
+      body.appendChild(row);
+    }
+  }
+
+  /* ---- step 5 ---- */
+  function renderExport() {
+    const list = chosenBoxes().filter(x => x.box.figure);
+    const total = chosenBoxes().length;
+    $('#export-summary').textContent = list.length
+      ? 'พร้อมแล้ว ' + list.length + ' รูป' + (total > list.length ? ' (อีก ' + (total - list.length) + ' รูปยังไม่ได้อ่าน)' : '') +
+        ' — ดาวน์โหลดเป็น SVG แล้วแทรกใน Word ได้เลย'
+      : 'ยังไม่มีรูปที่อ่านแล้ว ย้อนกลับไปขั้นที่ 3 แล้วกด “อ่านมุม”';
+    $('#btn-svg-all').disabled = !list.length;
+    const wrap = $('#export-list');
+    wrap.innerHTML = '';
+    list.forEach(({ page, box }) => {
+      const card = el('div', 'ex');
+      const pic = el('div', 'pic');
+      pic.innerHTML = AM.svg.render(box.figure, { width: 240 });
+      card.appendChild(pic);
+      const row = el('div', 'row');
+      row.appendChild(el('strong', null, nameFor(page, box) + '.svg'));
+      const a = el('a', 'btn ghost sm');
+      const svg = AM.svg.render(box.figure, { width: 640 });
+      a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      a.download = AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg';
+      a.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-download"/></svg> SVG';
+      row.appendChild(a);
+      card.appendChild(row);
+      wrap.appendChild(card);
+    });
+    updateZipButton();
   }
 
   function renderBoxes() {
@@ -2757,89 +3173,6 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     return state.settings.prefix + String(figureIndex(page, box)).padStart(2, '0');
   }
 
-  /* ---------- the gallery: pick figures, then shape them ---------- */
-
-  function renderGallery() {
-    const page = active();
-    const wrap = $('#gallery');
-    wrap.innerHTML = '';
-    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
-    $('#fig-count').textContent = total;
-    if (!page) return;
-
-    if (!page.boxes.length) {
-      const empty = el('div', 'gallery-empty');
-      empty.textContent = page.searched
-        ? 'ไม่พบรูปมุมในหน้านี้ — เปิด “เพิ่มกรอบเองได้” แล้วลากกรอบคลุมรูปที่ต้องการ'
-        : 'ใส่ Gemini API key แล้วกด “ค้นหารูปใหม่” เพื่อให้ AI หารูปมุมในหน้านี้';
-      wrap.appendChild(empty);
-      return;
-    }
-
-    page.boxes.forEach(box => {
-      const card = el('div', 'card' + (box.selected === false ? ' off' : ''));
-
-      const head = el('label', 'card-head');
-      const tick = el('input');
-      tick.type = 'checkbox';
-      tick.checked = box.selected !== false;
-      tick.onchange = () => { box.selected = tick.checked; renderGallery(); renderBoxes(); };
-      head.appendChild(tick);
-      head.appendChild(el('span', 'card-name', nameFor(page, box)));
-      const st = el('span', 'card-state ' + (box.figure ? 'done' : box.reading ? 'busy' : ''));
-      st.textContent = box.figure ? 'แก้ค่าได้' : box.reading ? 'กำลังอ่าน…' : 'ยังไม่ได้อ่าน';
-      head.appendChild(st);
-      card.appendChild(head);
-
-      const body = el('div', 'card-body');
-      const crop = el('figure', 'card-crop');
-      crop.appendChild(el('figcaption', null, 'ต้นฉบับ'));
-      if (box.url) {
-        const img = el('img');
-        img.src = box.url;
-        img.alt = '';
-        crop.appendChild(img);
-      } else {
-        crop.appendChild(previewCanvas(page, box));
-      }
-      body.appendChild(crop);
-
-      if (box.figure) {
-        const built = el('figure', 'card-built');
-        built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อขยับเส้น'));
-        const holder = el('div', 'svg-holder');
-        holder.innerHTML = AM.svg.render(box.figure, { width: 300, interactive: true });
-        attachPointDrag(holder, page, box);
-        built.appendChild(holder);
-        body.appendChild(built);
-      }
-      card.appendChild(body);
-
-      if (box.figure) {
-        card.appendChild(angleEditor(page, box));
-        for (const c of box.figure.conflicts || []) {
-          const d = el('div', 'conflict');
-          d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายอ่านได้ ' + c.claimed +
-            '° แต่รูปวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
-            ' — เทียบกับต้นฉบับก่อนใช้';
-          card.appendChild(d);
-        }
-        if (box.figure.notes) {
-          card.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + box.figure.notes));
-        }
-        const actions = el('div', 'row');
-        const dl = el('button', 'primary', 'ดาวน์โหลด SVG');
-        dl.onclick = () => downloadSvg(page, box);
-        actions.appendChild(dl);
-        const again = el('button', 'ghost', 'อ่านใหม่');
-        again.onclick = () => readWithAI(page, box);
-        actions.appendChild(again);
-        card.appendChild(actions);
-      }
-      wrap.appendChild(card);
-    });
-  }
-
   /* Every angle the figure knows about, as an editable value. Typing a number
      re-solves the whole figure, so the drawing and the label cannot disagree. */
   function angleEditor(page, box) {
@@ -2847,15 +3180,16 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     const wrap = el('div', 'angles');
     fig.angles.forEach((a, i) => {
       const row = el('label', 'angle-row');
-      row.appendChild(el('span', 'angle-at', 'มุมที่ ' + a.vertex));
+      row.appendChild(el('span', 'at', 'มุมที่ ' + a.vertex));
       const input = el('input');
       input.type = 'text';
       input.value = a.label || '';
       input.placeholder = 'เช่น 82° หรือ x';
+      input.setAttribute('aria-label', 'ค่ามุมที่จุด ' + a.vertex);
       input.onchange = () => setAngleLabel(page, box, i, input.value);
       row.appendChild(input);
       const measured = AM.geometry.measure(fig, a);
-      row.appendChild(el('span', 'angle-measured',
+      row.appendChild(el('span', 'meas',
                          measured === null ? '' : Math.round(measured * 10) / 10 + '°'));
       wrap.appendChild(row);
     });
@@ -2894,7 +3228,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     }
     invalidateBox(box);
     schedulePrepare();
-    renderGallery();
+    renderCustomize();
   }
 
   /* Dragging a point is the other half of customising: it changes the lines
@@ -2935,7 +3269,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
         svg.removeEventListener('pointerup', up);
         invalidateBox(box);
         schedulePrepare();
-        renderGallery();
+        renderCustomize();
       };
       svg.addEventListener('pointermove', move);
       svg.addEventListener('pointerup', up);
@@ -2965,7 +3299,9 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     saveBytes(AM.zip.makeZip(entries), stem + '-svg.zip', 'application/zip');
   }
 
-  const renderList = renderGallery;
+  /* Background PNG preparation pokes this after every figure; only the steps
+     that show thumbnails need to hear about it, and never the editor mid-drag. */
+  const renderList = () => { if (state.step === 3 || state.step === 5) renderStep(); };
 
   /* Previews come from the analysis-scale page, so nothing at full resolution
      has to be decoded just to draw a thumbnail. */
@@ -3029,6 +3365,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
         mode = handle || 'move';
         state.selected = box.id;
       } else {
+        if (!state.manual) { state.undo.pop(); return; }
         box = makeBox({ x: start.x, y: start.y, w: 1, h: 1 }, true);
         page.boxes.push(box);
         mode = 'se';
@@ -3138,8 +3475,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     if (!btn) return;
     btn.disabled = !total || pending > 0;
     btn.textContent = !total ? 'ยังไม่มีรูปให้บันทึก'
-      : pending ? 'กำลังเตรียมไฟล์ ' + (total - pending) + '/' + total + '…'
-      : 'ดาวน์โหลดทั้งหมด (.zip)';
+      : pending ? 'กำลังเตรียมไฟล์ PNG ' + (total - pending) + '/' + total + '…'
+      : 'ดาวน์โหลด PNG ทั้งหมด (.zip)';
   }
 
   function schedulePrepare(delay) {
@@ -3294,7 +3631,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     const key = getKey();
     $('#key-unset').hidden = !!key;
     $('#key-set').hidden = !key;
-    $('#ai-state').textContent = key ? 'พร้อม' : 'ปิด';
+    $('#ai-state').textContent = key ? 'พร้อมใช้' : 'ยังไม่ได้ใส่';
+    $('#ai-state').className = 'chip' + (key ? ' ok' : '');
     if (key) $('#key-mask').textContent = key.slice(0, 6) + '…' + key.slice(-4);
   }
 
@@ -3311,7 +3649,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     const key = getKey();
     if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
     box.reading = true;
-    renderGallery();
+    if (state.step === 4) renderCustomize();
     try {
       if (!box.png) box.png = await renderFigure(page, box);
       /* The cleaned, deskewed crop is what the model sees — the same image that
@@ -3324,19 +3662,25 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
     box.reading = false;
-    renderGallery();
+    renderStep();
   }
 
   async function readSelected() {
     const page = active();
     if (!page) return;
-    const list = page.boxes.filter(b => b.selected !== false && !b.figure);
-    if (!list.length) { toast('ไม่มีรูปที่เลือกไว้และยังไม่ได้อ่าน', 4000); return; }
+    const list = chosenBoxes().filter(x => !x.box.figure);
+    if (!list.length) { goStep(4); return; }
+    if (!getKey()) { toast('ใส่ Gemini API key ในขั้นที่ 1 ก่อน', 5000); goStep(1); return; }
+    state.figIndex = 0;
+    goStep(4);
     for (let i = 0; i < list.length; i++) {
       status('กำลังอ่านมุม ' + (i + 1) + ' จาก ' + list.length + '…');
-      await readWithAI(page, list[i]);
+      state.figIndex = chosenBoxes().findIndex(x => x.box === list[i].box);
+      await readWithAI(list[i].page, list[i].box);
     }
+    state.figIndex = 0;
     status(null);
+    renderStep();
   }
 
   /* The deskewed page as base64, small enough to keep the request cheap and
@@ -3362,6 +3706,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
   async function findWithAI(page) {
     const key = getKey();
     if (!key) return;
+    page.finding = true;
+    if (state.step === 2) renderFind();
     status('กำลังให้ AI หารูปมุมในหน้านี้…');
     try {
       const d = page.deskewed;
@@ -3384,9 +3730,10 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       toast('ค้นหารูปไม่สำเร็จ: ' + (e && e.message), 9000);
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
+    page.finding = false;
     status(null);
     renderPages();
-    renderAll();
+    renderStep();
     schedulePrepare(0);
   }
 
@@ -3402,24 +3749,34 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
   }
 
   function initControls() {
-    $('#btn-add').onclick = $('#btn-add2').onclick = () => $('#file-input').click();
+    const drop = $('#drop');
+    drop.onclick = () => $('#file-input').click();
+    drop.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); $('#file-input').click(); } };
     $('#file-input').onchange = ev => { addFiles(ev.target.files); ev.target.value = ''; };
     $('#btn-demo').onclick = addDemo;
-    $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
-    $('#btn-read').onclick = readSelected;
-    $('#btn-svg-all').onclick = downloadAllSvg;
-    $('#btn-all').onclick = () => {
-      const p = active(); if (!p) return;
-      p.boxes.forEach(b => { b.selected = true; });
-      renderGallery(); renderBoxes();
+    $('#btn-restart').onclick = () => {
+      if (!confirm('เริ่มใหม่ทั้งหมด? รูปและค่าที่แก้ไว้จะหายไป')) return;
+      for (const p of state.pages) for (const b of p.boxes) invalidateBox(b);
+      state.pages = []; state.activeId = null; state.selected = null; state.figIndex = 0; fullRes = null;
+      goStep(1);
     };
-    $('#btn-none').onclick = () => {
-      const p = active(); if (!p) return;
-      p.boxes.forEach(b => { b.selected = false; });
-      renderGallery(); renderBoxes();
+
+    $('#btn-back').onclick = () => {
+      if (state.step === 4 && state.figIndex > 0) { state.figIndex--; renderCustomize(); renderActions(); return; }
+      goStep(state.step - 1);
     };
-    $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
-    $('#btn-zip').onclick = exportZip;
+    $('#btn-next').onclick = () => {
+      if (state.step === 3) { readSelected(); return; }
+      if (state.step === 4) {
+        const list = chosenBoxes();
+        if (state.figIndex < list.length - 1) { state.figIndex++; renderCustomize(); renderActions(); return; }
+      }
+      goStep(state.step + 1);
+    };
+    window.addEventListener('popstate', ev => {
+      const n = ev.state && ev.state.step ? ev.state.step : (parseInt(location.hash.slice(1), 10) || 1);
+      goStep(n, { push: false });
+    });
 
     syncKeyPanel();
     $('#btn-key-save').onclick = () => {
@@ -3429,16 +3786,14 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       $('#in-key').value = '';
       syncKeyPanel();
       toast('บันทึกคีย์แล้ว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น', 5000);
+      const p = active();
+      if (p && p.ready && !p.searched) findWithAI(p);
     };
     $('#btn-key-clear').onclick = () => { setKey(''); syncKeyPanel(); };
-    $('#btn-read').onclick = () => {
-      const page = active();
-      if (!page) return;
-      const box = page.boxes.find(b => b.id === state.selected) || page.boxes[0];
-      if (!box) { toast('เลือกรูปที่ต้องการก่อน', 3000); return; }
-      readWithAI(page, box);
-    };
+    $('#in-key').onkeydown = ev => { if (ev.key === 'Enter') $('#btn-key-save').click(); };
 
+    $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
+    $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
     angle.onchange = () => {
@@ -3450,6 +3805,17 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       processActive(true);
     };
 
+    $('#btn-all').onclick = () => {
+      for (const p of state.pages) p.boxes.forEach(b => { b.selected = true; });
+      renderSelect(); renderActions();
+    };
+    $('#btn-none').onclick = () => {
+      for (const p of state.pages) p.boxes.forEach(b => { b.selected = false; });
+      renderSelect(); renderActions();
+    };
+
+    $('#btn-svg-all').onclick = downloadAllSvg;
+    $('#btn-zip').onclick = exportZip;
     $('#in-mode').onchange = ev => {
       state.settings.mode = ev.target.value;
       invalidateAll(); schedulePrepare(); renderList();
@@ -3469,7 +3835,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       /* Strip only what a filesystem rejects. A \w class here would be ASCII-only
          and would quietly delete every Thai character the user typed. */
       state.settings.prefix = ev.target.value.replace(/[\/\\:*?"<>|]/g, '');
-      renderBoxes(); renderList();
+      renderBoxes(); renderStep();
     };
 
     let dragDepth = 0;
@@ -3485,16 +3851,18 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       document.body.classList.remove('dragging');
       if (ev.dataTransfer && ev.dataTransfer.files.length) addFiles(ev.dataTransfer.files);
     });
-    window.addEventListener('resize', () => { if (active() && active().ready) renderAll(); });
+    window.addEventListener('resize', () => { if (state.step === 2) renderFind(); });
   }
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
   AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
              readWithAI, readSelected, findWithAI, downloadSvg, downloadAllSvg,
-             setAngleLabel, renderGallery, getKey, bytesToBase64, pageBase64 };
+             setAngleLabel, renderStep, goStep, chosenBoxes, getKey, bytesToBase64, pageBase64 };
 
   initControls();
   initEditing();
+  try { history.replaceState({ step: 1 }, '', '#1'); } catch (e) { /* file:// */ }
+  renderStep();
   if (/[?&]demo/.test(location.search)) addDemo();
 })();
 </script>
