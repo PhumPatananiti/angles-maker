@@ -14,6 +14,8 @@
    [hidden] and leaves them visible underneath the page. */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
+/* iOS Safari's toolbars make 100vh taller than the visible area; dvh tracks it. */
+@supports (height: 100dvh) { html, body { height: 100dvh; } }
 body {
   margin: 0;
   font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Sukhumvit Set", "Noto Sans Thai",
@@ -70,7 +72,14 @@ main { flex: 1; display: flex; min-height: 0; }
 .canvas-wrap { position: relative; margin: 0 auto; line-height: 0; }
 .canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
   box-shadow: 0 2px 18px #0006; border-radius: 2px; }
-.overlay { position: absolute; inset: 0; cursor: crosshair; }
+.overlay {
+  position: absolute; inset: 0; cursor: crosshair;
+  /* Without this a finger drag scrolls the page instead of drawing a box, so
+     on a touch screen no figure can be added by hand at all. */
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
 
 .box {
   position: absolute; border: 2px solid var(--accent); background: #b4472e14;
@@ -155,7 +164,26 @@ input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
   font-size: 13px; max-width: 70ch; box-shadow: 0 6px 24px #0004; z-index: 20;
 }
 .toast code { background: #ffffff22; padding: 1px 5px; border-radius: 4px; }
+/* Fingers need a bigger target than a mouse, and on a phone-sized canvas the
+   eight handles of a box overlap into an unreadable cluster — keep the corners,
+   which are enough to resize with, and drop the edge handles. */
+@media (pointer: coarse) {
+  .box .h { width: 15px; height: 15px; border-width: 2px; }
+  .box .h.nw, .box .h.sw { left: -8px; }
+  .box .h.ne, .box .h.se { right: -8px; }
+  .box .h.nw, .box .h.ne { top: -8px; }
+  .box .h.sw, .box .h.se { bottom: -8px; }
+  .box .h.n, .box .h.s, .box .h.e, .box .h.w { display: none; }
+  .fig .dl { padding: 8px 10px; font-size: 18px; }
+  button { padding: 9px 14px; }
+}
+
 @media (max-width: 860px) {
   main { flex-direction: column; }
-  .side { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 46vh; }
+  .stage { min-height: 54vh; flex: none; }
+  .side { width: auto; border-left: 0; border-top: 1px solid var(--line);
+          max-height: none; overflow-y: visible; }
+  body { overflow: auto; }
+  .bar { flex-wrap: wrap; gap: 8px; }
+  .brand .sub { display: block; margin-left: 0; }
 }

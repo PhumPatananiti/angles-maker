@@ -23,6 +23,8 @@
    [hidden] and leaves them visible underneath the page. */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
+/* iOS Safari's toolbars make 100vh taller than the visible area; dvh tracks it. */
+@supports (height: 100dvh) { html, body { height: 100dvh; } }
 body {
   margin: 0;
   font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Sukhumvit Set", "Noto Sans Thai",
@@ -79,7 +81,14 @@ main { flex: 1; display: flex; min-height: 0; }
 .canvas-wrap { position: relative; margin: 0 auto; line-height: 0; }
 .canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
   box-shadow: 0 2px 18px #0006; border-radius: 2px; }
-.overlay { position: absolute; inset: 0; cursor: crosshair; }
+.overlay {
+  position: absolute; inset: 0; cursor: crosshair;
+  /* Without this a finger drag scrolls the page instead of drawing a box, so
+     on a touch screen no figure can be added by hand at all. */
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
 
 .box {
   position: absolute; border: 2px solid var(--accent); background: #b4472e14;
@@ -164,9 +173,28 @@ input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
   font-size: 13px; max-width: 70ch; box-shadow: 0 6px 24px #0004; z-index: 20;
 }
 .toast code { background: #ffffff22; padding: 1px 5px; border-radius: 4px; }
+/* Fingers need a bigger target than a mouse, and on a phone-sized canvas the
+   eight handles of a box overlap into an unreadable cluster — keep the corners,
+   which are enough to resize with, and drop the edge handles. */
+@media (pointer: coarse) {
+  .box .h { width: 15px; height: 15px; border-width: 2px; }
+  .box .h.nw, .box .h.sw { left: -8px; }
+  .box .h.ne, .box .h.se { right: -8px; }
+  .box .h.nw, .box .h.ne { top: -8px; }
+  .box .h.sw, .box .h.se { bottom: -8px; }
+  .box .h.n, .box .h.s, .box .h.e, .box .h.w { display: none; }
+  .fig .dl { padding: 8px 10px; font-size: 18px; }
+  button { padding: 9px 14px; }
+}
+
 @media (max-width: 860px) {
   main { flex-direction: column; }
-  .side { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 46vh; }
+  .stage { min-height: 54vh; flex: none; }
+  .side { width: auto; border-left: 0; border-top: 1px solid var(--line);
+          max-height: none; overflow-y: visible; }
+  body { overflow: auto; }
+  .bar { flex-wrap: wrap; gap: 8px; }
+  .brand .sub { display: block; margin-left: 0; }
 }
 </style>
 </head>
@@ -1596,6 +1624,12 @@ input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
   };
 
   const ANALYSIS_W = 1600;
+  /* iOS Safari refuses to allocate very large canvases and hands back a blank
+     one rather than an error. A 12 MP phone photo is already ~15 MP once
+     rotated upright, and a 48 MP one is far past any limit. Cap the export
+     canvas: figures are written at most 2000px wide, so cropping from a page
+     of this size loses nothing visible. */
+  const MAX_EXPORT_PIXELS = 12e6;
   let nextId = 1;
 
   const state = {
@@ -2044,26 +2078,32 @@ input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
     if (fullRes && fullRes.pageId === page.id && fullRes.angle === page.angle) return fullRes;
     fullRes = null;
     const src = await sourceBitmap(page);
-    const size = AM.util.rotatedSize(src.width, src.height, page.angle);
+    const area = src.width * src.height;
+    const shrink = area > MAX_EXPORT_PIXELS ? Math.sqrt(MAX_EXPORT_PIXELS / area) : 1;
+    const dw = Math.round(src.width * shrink), dh = Math.round(src.height * shrink);
+    const size = AM.util.rotatedSize(dw, dh, page.angle);
     const c = el('canvas');
     c.width = size.w; c.height = size.h;
     const ctx = c.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, size.w, size.h);
+    ctx.imageSmoothingQuality = 'high';
     /* Same centre-to-centre convention as image.rotateGray, which is what makes
-       box / scale a valid crop rectangle here. */
+       box / boxScale a valid crop rectangle here. */
     ctx.translate(size.w / 2, size.h / 2);
     ctx.rotate(page.angle);
-    ctx.drawImage(src, -src.width / 2, -src.height / 2);
+    ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (src.close) src.close();
-    fullRes = { pageId: page.id, angle: page.angle, canvas: c, ctx, w: size.w, h: size.h };
+    if (!c.width || !ctx.getImageData(0, 0, 1, 1)) throw new Error('canvas');
+    fullRes = { pageId: page.id, angle: page.angle, canvas: c, ctx,
+                w: size.w, h: size.h, boxScale: page.scale / shrink };
     return fullRes;
   }
 
   async function renderFigure(page, box) {
     const fr = await ensureFullRes(page);
-    const b = AM.pipeline.boxToFullRes(box, page.scale);
+    const b = AM.pipeline.boxToFullRes(box, fr.boxScale);
     const x = AM.util.clamp(b.x, 0, fr.w - 2), y = AM.util.clamp(b.y, 0, fr.h - 2);
     const w = Math.max(2, Math.min(b.w, fr.w - x)), h = Math.max(2, Math.min(b.h, fr.h - y));
     const img = fr.ctx.getImageData(x, y, w, h);

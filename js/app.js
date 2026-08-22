@@ -11,6 +11,12 @@
   };
 
   const ANALYSIS_W = 1600;
+  /* iOS Safari refuses to allocate very large canvases and hands back a blank
+     one rather than an error. A 12 MP phone photo is already ~15 MP once
+     rotated upright, and a 48 MP one is far past any limit. Cap the export
+     canvas: figures are written at most 2000px wide, so cropping from a page
+     of this size loses nothing visible. */
+  const MAX_EXPORT_PIXELS = 12e6;
   let nextId = 1;
 
   const state = {
@@ -459,26 +465,32 @@
     if (fullRes && fullRes.pageId === page.id && fullRes.angle === page.angle) return fullRes;
     fullRes = null;
     const src = await sourceBitmap(page);
-    const size = AM.util.rotatedSize(src.width, src.height, page.angle);
+    const area = src.width * src.height;
+    const shrink = area > MAX_EXPORT_PIXELS ? Math.sqrt(MAX_EXPORT_PIXELS / area) : 1;
+    const dw = Math.round(src.width * shrink), dh = Math.round(src.height * shrink);
+    const size = AM.util.rotatedSize(dw, dh, page.angle);
     const c = el('canvas');
     c.width = size.w; c.height = size.h;
     const ctx = c.getContext('2d', { willReadFrequently: true });
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, size.w, size.h);
+    ctx.imageSmoothingQuality = 'high';
     /* Same centre-to-centre convention as image.rotateGray, which is what makes
-       box / scale a valid crop rectangle here. */
+       box / boxScale a valid crop rectangle here. */
     ctx.translate(size.w / 2, size.h / 2);
     ctx.rotate(page.angle);
-    ctx.drawImage(src, -src.width / 2, -src.height / 2);
+    ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (src.close) src.close();
-    fullRes = { pageId: page.id, angle: page.angle, canvas: c, ctx, w: size.w, h: size.h };
+    if (!c.width || !ctx.getImageData(0, 0, 1, 1)) throw new Error('canvas');
+    fullRes = { pageId: page.id, angle: page.angle, canvas: c, ctx,
+                w: size.w, h: size.h, boxScale: page.scale / shrink };
     return fullRes;
   }
 
   async function renderFigure(page, box) {
     const fr = await ensureFullRes(page);
-    const b = AM.pipeline.boxToFullRes(box, page.scale);
+    const b = AM.pipeline.boxToFullRes(box, fr.boxScale);
     const x = AM.util.clamp(b.x, 0, fr.w - 2), y = AM.util.clamp(b.y, 0, fr.h - 2);
     const w = Math.max(2, Math.min(b.w, fr.w - x)), h = Math.max(2, Math.min(b.h, fr.h - y));
     const img = fr.ctx.getImageData(x, y, w, h);
