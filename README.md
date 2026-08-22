@@ -49,6 +49,36 @@ runs in reading order across every page you have loaded.
 If a figure is ever missed, tick **เพิ่มกรอบเองได้** and drag a rectangle over it by hand. That is
 an escape hatch, not a step in the flow.
 
+## Turning a figure into editable geometry
+
+Box a figure and press **แปลงเป็นเส้นและมุม**. A Hough transform finds the straight strokes — which
+is nearly all these diagrams are — works out where they cross, and groups strokes at a common angle
+into parallel families. The result is points, lines and constraints: type a new value into any angle
+and the drawing follows, because one drives the other.
+
+Ten milliseconds per figure, in the browser. No key, no network, no quota.
+
+**It deliberately does not read the numbers.** Digit recognition on a photographed textbook is the
+least reliable part of the job and the one a person does instantly and correctly, with the original
+crop already on screen beside the fields. A vision model asked to do it returned 32 where the page
+said 82 — exactly the error that reaches a student unnoticed.
+
+### The AI path (optional)
+
+A Gemini key adds two things: finding figures on a whole page automatically, and reading a figure
+the tracer struggles with. Neither is required. The free tier allows about **5 requests a minute and
+20 a day** for `gemini-3.6-flash`, so a single page of questions exhausts a day — which is why the
+local path is the default and the key is optional.
+
+The key lives in `localStorage` in that browser, never reaches the server hosting the page, and
+travels in the `x-goog-api-key` header rather than a URL. Rate limits are handled by backing off and
+retrying, honouring the wait Google states in its own error body.
+
+Anything the model reads is cross-checked against itself: it returns coordinates as well as label
+text, so the angle the drawing measures is compared with the number printed on it, and a
+disagreement of more than a few degrees leaves that constraint switched off and reported rather than
+drawn over.
+
 ## How it works
 
 Analysis runs on a copy of the photo scaled to 1600 px; export always re-crops the original pixels.
