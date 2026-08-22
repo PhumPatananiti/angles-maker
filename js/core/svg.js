@@ -12,7 +12,12 @@
   const DEFAULTS = {
     width: 640, padding: 46, stroke: 2, color: '#111', fontSize: 17,
     fontFamily: "'Times New Roman', 'Sarabun', serif",
-    arrow: 9, arcRadius: 30, showPoints: true, pointRadius: 3.2, background: 'none'
+    arrow: 9, arcRadius: 30, showPoints: true, pointRadius: 3.2, background: 'none',
+    /* Physical width for the file that leaves the app. Without a real unit
+       Word reads the pixel width at 96dpi, so a 640px drawing lands 6.7 inches
+       across and swallows the page. 76mm is 3 inches — the same size the PNG
+       export targets at 300dpi. */
+    widthMm: 0
   };
 
   /* Clip an infinite line through p in direction d against the drawing box,
@@ -60,8 +65,13 @@
     const box = { x0: 3, y0: 3, x1: o.width - 3, y1: height - 3 };
 
     const out = [];
+    let attrW = String(o.width), attrH = String(height);
+    if (o.widthMm) {
+      attrW = f(o.widthMm) + 'mm';
+      attrH = f(o.widthMm * height / o.width) + 'mm';
+    }
     out.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + o.width + ' ' + height +
-             '" width="' + o.width + '" height="' + height + '" role="img">');
+             '" width="' + attrW + '" height="' + attrH + '" role="img">');
     if (o.background && o.background !== 'none') {
       out.push('<rect width="100%" height="100%" fill="' + o.background + '"/>');
     }

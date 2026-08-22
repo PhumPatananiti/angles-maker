@@ -251,6 +251,7 @@
 
   const STEPS = 5;
   const EDIT_W = 420;          // the editor canvas never changes size mid-edit
+  const EXPORT_MM = 76;        // 3 inches — how wide a figure lands in Word
   const stepOf = n => document.querySelector('.step[data-step="' + n + '"]');
 
   function canEnter(n) {
@@ -552,7 +553,7 @@
       const row = el('div', 'row');
       row.appendChild(el('strong', null, nameFor(page, box) + '.svg'));
       const a = el('a', 'btn ghost sm');
-      const svg = AM.svg.render(box.figure, { width: 640 });
+      const svg = AM.svg.render(box.figure, { width: 640, widthMm: EXPORT_MM });
       a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
       a.download = AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg';
       a.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-download"/></svg> SVG';
@@ -734,7 +735,7 @@
   }
 
   function downloadSvg(page, box) {
-    const svg = AM.svg.render(box.figure, { width: 640 });
+    const svg = AM.svg.render(box.figure, { width: 640, widthMm: EXPORT_MM });
     saveBytes(new TextEncoder().encode(svg),
               AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
   }
