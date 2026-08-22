@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'">
+      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com">
 <title>Angles Maker — ตัดรูปมุมจากหน้าหนังสือ</title>
 <style>
 :root {
@@ -173,6 +173,24 @@ a.dl:hover { background: var(--accent-soft); }
 .fig .dl.waiting { color: var(--line); letter-spacing: 1px; font-size: 11px; cursor: default; }
 .empty { color: var(--muted); font-size: 12.5px; padding: 10px 2px; }
 
+.compare { position: fixed; inset: 0; background: #0009; z-index: 30; display: flex;
+  align-items: center; justify-content: center; padding: 20px; }
+.compare-inner { background: var(--panel); border-radius: 12px; padding: 18px; max-width: 900px;
+  width: 100%; max-height: 92vh; overflow: auto; }
+.compare-inner header { display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px; }
+.compare-inner h2 { font-size: 16px; margin: 0; }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
+.compare-grid figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+  background: #fff; }
+.compare-grid figcaption { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.compare-grid img, .compare-grid svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.conflict { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 8px 10px;
+  border-radius: 0 6px 6px 0; margin-bottom: 6px; font-size: 12.5px; }
+.ok-note { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
+code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+@media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+
 .toast {
   position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px;
@@ -274,6 +292,29 @@ a.dl:hover { background: var(--accent-soft); }
       </label>
     </div>
 
+    <div class="panel" id="ai-panel">
+      <div class="panel-head"><h2>อ่านรูปด้วย AI</h2><span id="ai-state" class="pill">ปิด</span></div>
+      <p class="hint">แปลงรูปที่ตัดได้ให้เป็นเส้นและมุมที่แก้ไขค่าได้ แล้วส่งออกเป็นไฟล์ SVG
+         สำหรับวางใน Word</p>
+      <div id="key-unset">
+        <label class="field">
+          <span>Gemini API key</span>
+          <input id="in-key" type="password" spellcheck="false" autocomplete="off"
+                 placeholder="AIza…">
+          <small>ขอคีย์ฟรีได้ที่ aistudio.google.com/apikey — คีย์จะถูกเก็บไว้ในเบราว์เซอร์
+                 ของเครื่องนี้เท่านั้น ไม่ถูกส่งไปที่เซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
+        </label>
+        <div class="row"><button id="btn-key-save" class="ghost">บันทึกคีย์</button></div>
+      </div>
+      <div id="key-set" hidden>
+        <p class="hint">ใช้คีย์ <code id="key-mask"></code> อยู่</p>
+        <div class="row">
+          <button id="btn-read" class="primary">อ่านรูปที่เลือก</button>
+          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-head"><h2>ไฟล์ที่จะบันทึก</h2></div>
       <label class="field">
@@ -302,6 +343,25 @@ a.dl:hover { background: var(--accent-soft); }
     </div>
   </aside>
 </main>
+
+<div id="compare" class="compare" hidden>
+  <div class="compare-inner">
+    <header>
+      <h2>ตรวจสอบรูปที่ AI อ่านได้</h2>
+      <button id="compare-close" class="ghost">ปิด</button>
+    </header>
+    <p class="hint">เทียบรูปต้นฉบับกับรูปที่สร้างใหม่ทีละเส้นทีละมุม
+       ถ้าตรงกันจึงนำไปใช้ AI อ่านตัวเลขผิดได้</p>
+    <div class="compare-grid">
+      <figure><figcaption>ต้นฉบับที่ตัดมา</figcaption><img id="compare-crop" alt=""></figure>
+      <figure><figcaption>สร้างใหม่จากที่ AI อ่าน</figcaption><div id="compare-svg"></div></figure>
+    </div>
+    <div id="compare-notes"></div>
+    <div class="row">
+      <button id="compare-svg-dl" class="primary">ดาวน์โหลด SVG</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast" class="toast" hidden></div>
 
@@ -1622,6 +1682,652 @@ a.dl:hover { background: var(--accent-soft); }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
 <script>
+/* Angles Maker — the figure model and its constraint solver.
+   Points are the only degrees of freedom. Everything a user can change — an
+   angle's value, which lines are parallel — is a constraint, and the solver
+   moves points until the constraints hold. Seeded from where the figure
+   already is, so of all the configurations that satisfy the constraints it
+   settles on the one nearest the original. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+  const TAU = Math.PI * 2;
+
+  const norm = a => { while (a <= -Math.PI) a += TAU; while (a > Math.PI) a -= TAU; return a; };
+  const dir = (p, q) => Math.atan2(q.y - p.y, q.x - p.x);
+
+  /* Signed turn from ray v->f to ray v->t, in (-pi, pi]. Signed rather than
+     absolute so a figure cannot quietly flip over while being solved. */
+  function signedAngle(v, f, t) {
+    return norm(dir(v, t) - dir(v, f));
+  }
+
+  function create() {
+    return { points: {}, lines: [], constraints: [], angles: [], labels: [] };
+  }
+
+  function clone(fig) { return JSON.parse(JSON.stringify(fig)); }
+
+  function pointList(fig) {
+    return Object.keys(fig.points).filter(id => !fig.points[id].fixed);
+  }
+
+  function lineById(fig, id) {
+    for (const l of fig.lines) if (l.id === id) return l;
+    return null;
+  }
+
+  /* Each constraint contributes one residual, in units comparable to each other:
+     angles in radians, positions relative to the figure's own scale. */
+  function residual(fig, c) {
+    const P = fig.points;
+    switch (c.type) {
+      case 'angle': {
+        const v = P[c.vertex], f = P[c.from], t = P[c.to];
+        if (!v || !f || !t) return 0;
+        const have = signedAngle(v, f, t);
+        const want = (c.sign || (have < 0 ? -1 : 1)) * c.value * Math.PI / 180;
+        return norm(have - want);
+      }
+      case 'parallel': {
+        const a = lineById(fig, c.lines[0]), b = lineById(fig, c.lines[1]);
+        if (!a || !b) return 0;
+        const da = dir(P[a.a], P[a.b]), db = dir(P[b.a], P[b.b]);
+        /* sin of the difference: zero when parallel OR antiparallel, which is
+           what "parallel lines" means here — direction of travel is arbitrary. */
+        return Math.sin(norm(db - da));
+      }
+      case 'onLine': {
+        const p = P[c.point], l = lineById(fig, c.line);
+        if (!p || !l) return 0;
+        const a = P[l.a], b = P[l.b];
+        const ux = b.x - a.x, uy = b.y - a.y;
+        const len = Math.hypot(ux, uy) || 1e-9;
+        return ((p.x - a.x) * uy - (p.y - a.y) * ux) / len;
+      }
+      case 'length': {
+        const a = P[c.from], b = P[c.to];
+        return Math.hypot(b.x - a.x, b.y - a.y) - c.value;
+      }
+      case 'equalLength': {
+        const a = P[c.from], b = P[c.to], c2 = P[c.from2], d = P[c.to2];
+        return Math.hypot(b.x - a.x, b.y - a.y) - Math.hypot(d.x - c2.x, d.y - c2.y);
+      }
+      default:
+        return 0;
+    }
+  }
+
+  function residuals(fig, anchors, weight, diag) {
+    const out = fig.constraints.filter(c => c.enabled !== false).map(c => residual(fig, c));
+    /* A weak pull back towards where each point started. Constraints alone
+       rarely pin a figure down completely — satisfy "this angle is 55°" and a
+       free point is at liberty to fly across the page on its way there. This
+       keeps the drawing recognisably the one the user was looking at. */
+    if (anchors && weight) {
+      for (const id in anchors) {
+        const p = fig.points[id];
+        if (!p) continue;
+        out.push(weight * (p.x - anchors[id].x) / diag);
+        out.push(weight * (p.y - anchors[id].y) / diag);
+      }
+    }
+    return out;
+  }
+
+  function getVars(fig, ids) {
+    const v = new Float64Array(ids.length * 2);
+    ids.forEach((id, i) => { v[i * 2] = fig.points[id].x; v[i * 2 + 1] = fig.points[id].y; });
+    return v;
+  }
+  function setVars(fig, ids, v) {
+    ids.forEach((id, i) => { fig.points[id].x = v[i * 2]; fig.points[id].y = v[i * 2 + 1]; });
+  }
+
+  /* Dense Gaussian elimination with partial pivoting. n is small — twice the
+     number of movable points — so nothing cleverer is warranted. */
+  function solveLinear(A, b, n) {
+    const M = A.map((row, i) => row.concat([b[i]]));
+    for (let col = 0; col < n; col++) {
+      let piv = col;
+      for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+      if (Math.abs(M[piv][col]) < 1e-12) continue;
+      const tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const f = M[r][col] / M[col][col];
+        if (!f) continue;
+        for (let k = col; k <= n; k++) M[r][k] -= f * M[col][k];
+      }
+    }
+    const x = new Float64Array(n);
+    for (let i = 0; i < n; i++) x[i] = Math.abs(M[i][i]) < 1e-12 ? 0 : M[i][n] / M[i][i];
+    return x;
+  }
+
+  function cost(fig, anchors, weight, diag) {
+    let s = 0;
+    for (const r of residuals(fig, anchors, weight, diag)) s += r * r;
+    return s;
+  }
+
+  /* Two passes. The first carries the anchor pull, so the figure keeps its
+     shape while it moves; the second drops the anchors and, starting from that
+     result, drives the real constraints to zero. Nearest-looking and exact,
+     rather than a compromise between the two. */
+  function solve(figure, options) {
+    const o = options || {};
+    const w = o.anchorWeight === undefined ? 0.35 : o.anchorWeight;
+    if (w > 0) {
+      const anchors = {};
+      for (const id in figure.points) anchors[id] = { x: figure.points[id].x, y: figure.points[id].y };
+      const b = bounds(figure);
+      const diag = Math.hypot(b.w, b.h) || 1;
+      run(figure, o, anchors, w, diag);
+    }
+    return run(figure, o, null, 0, 1);
+  }
+
+  function run(figure, options, anchors, weight, diag) {
+    const o = Object.assign({ iterations: 60, tolerance: 1e-9, step: 1e-6 }, options || {});
+    const fig = figure;
+    const ids = pointList(fig);
+    const active = fig.constraints.filter(c => c.enabled !== false);
+    if (!ids.length || !active.length) return { ok: true, iterations: 0, cost: cost(fig) };
+
+    const n = ids.length * 2;
+    let lambda = 1e-3;
+    let best = cost(fig, anchors, weight, diag);
+    let iterations = 0;
+
+    for (let it = 0; it < o.iterations; it++) {
+      iterations++;
+      if (best < o.tolerance) break;
+      const x0 = getVars(fig, ids);
+      const r0 = residuals(fig, anchors, weight, diag);
+      const m = r0.length;
+
+      /* Numeric Jacobian: m residuals by n variables. */
+      const J = [];
+      for (let i = 0; i < m; i++) J.push(new Float64Array(n));
+      for (let j = 0; j < n; j++) {
+        const x = Float64Array.from(x0);
+        x[j] += o.step;
+        setVars(fig, ids, x);
+        const r1 = residuals(fig, anchors, weight, diag);
+        for (let i = 0; i < m; i++) J[i][j] = (r1[i] - r0[i]) / o.step;
+      }
+      setVars(fig, ids, x0);
+
+      /* Normal equations (J'J + lambda I) dx = -J'r */
+      const A = [];
+      for (let i = 0; i < n; i++) A.push(new Array(n).fill(0));
+      const g = new Float64Array(n);
+      for (let k = 0; k < m; k++) {
+        const row = J[k];
+        for (let i = 0; i < n; i++) {
+          g[i] += row[i] * r0[k];
+          for (let j = 0; j < n; j++) A[i][j] += row[i] * row[j];
+        }
+      }
+
+      let improved = false;
+      for (let attempt = 0; attempt < 8 && !improved; attempt++) {
+        const Ad = A.map((row, i) => {
+          const copy = row.slice();
+          copy[i] += lambda * (1 + Math.abs(row[i]));
+          return copy;
+        });
+        const dx = solveLinear(Ad, Array.from(g, v => -v), n);
+        const x = Float64Array.from(x0);
+        for (let i = 0; i < n; i++) x[i] += dx[i];
+        setVars(fig, ids, x);
+        const c = cost(fig, anchors, weight, diag);
+        if (c < best) { best = c; lambda = Math.max(1e-9, lambda * 0.4); improved = true; }
+        else { setVars(fig, ids, x0); lambda *= 4; }
+      }
+      if (!improved) break;
+    }
+    const finalCost = cost(fig, null, 0, 1);
+    return { ok: finalCost < 1e-6, iterations, cost: finalCost, residual: Math.sqrt(finalCost) };
+  }
+
+  /* What the figure currently measures, whatever the labels claim. The editor
+     shows this next to the label so a drawing that disagrees with its own
+     caption cannot go unnoticed. */
+  function measure(fig, a) {
+    const v = fig.points[a.vertex], f = fig.points[a.from], t = fig.points[a.to];
+    if (!v || !f || !t) return null;
+    return Math.abs(signedAngle(v, f, t)) * 180 / Math.PI;
+  }
+
+  /* Record the orientation of every angle constraint as it stands now, so the
+     solver preserves which side of the line the angle is on. */
+  function captureSigns(fig) {
+    for (const c of fig.constraints) {
+      if (c.type !== 'angle' || c.sign) continue;
+      const v = fig.points[c.vertex], f = fig.points[c.from], t = fig.points[c.to];
+      if (v && f && t) c.sign = signedAngle(v, f, t) < 0 ? -1 : 1;
+    }
+    return fig;
+  }
+
+  function bounds(fig) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id in fig.points) {
+      const p = fig.points[id];
+      if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y;
+      if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y;
+    }
+    if (!isFinite(x0)) return { x: 0, y: 0, w: 1, h: 1 };
+    return { x: x0, y: y0, w: Math.max(1e-6, x1 - x0), h: Math.max(1e-6, y1 - y0) };
+  }
+
+  AM.geometry = { create, clone, solve, measure, residual, residuals, cost,
+                  signedAngle, captureSigns, bounds, lineById, solveLinear };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — draw a figure as SVG.
+   Vector out, because Word 2016+ places SVG crisply at any size and can turn it
+   into editable shapes on demand; a PNG can do neither. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  const esc = s => String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const f = n => (Math.round(n * 100) / 100).toString();
+
+  const DEFAULTS = {
+    width: 640, padding: 46, stroke: 2, color: '#111', fontSize: 17,
+    fontFamily: "'Times New Roman', 'Sarabun', serif",
+    arrow: 9, arcRadius: 30, showPoints: true, pointRadius: 3.2, background: 'none'
+  };
+
+  /* Clip an infinite line through p in direction d against the drawing box,
+     which is how a "line" and a "ray" get their ends.
+     Each call states one half-plane as t*den <= num; the lower bounds need the
+     numerator negated as well as the denominator, or the range comes back
+     inverted and the line renders as a stub a few pixels long. */
+  function clipToBox(p, d, box) {
+    let tMin = -Infinity, tMax = Infinity;
+    const slab = (num, den) => {
+      if (Math.abs(den) < 1e-9) return num >= 0;
+      const t = num / den;
+      if (den > 0) { if (t < tMax) tMax = t; } else if (t > tMin) tMin = t;
+      return true;
+    };
+    if (!slab(box.x1 - p.x, d.x) || !slab(p.x - box.x0, -d.x)) return null;
+    if (!slab(box.y1 - p.y, d.y) || !slab(p.y - box.y0, -d.y)) return null;
+    if (tMin > tMax) return null;
+    return { tMin, tMax };
+  }
+
+  function arrowHead(x, y, angle, size, color) {
+    const a1 = angle + Math.PI - 0.38, a2 = angle + Math.PI + 0.38;
+    return '<path d="M' + f(x) + ' ' + f(y) +
+      'L' + f(x + Math.cos(a1) * size) + ' ' + f(y + Math.sin(a1) * size) +
+      'L' + f(x + Math.cos(a2) * size) + ' ' + f(y + Math.sin(a2) * size) +
+      'Z" fill="' + color + '"/>';
+  }
+
+  function render(figure, options) {
+    const o = Object.assign({}, DEFAULTS, options || {});
+    const G = AM.geometry;
+    const b = G.bounds(figure);
+
+    const scale = (o.width - o.padding * 2) / b.w;
+    const height = Math.round(b.h * scale + o.padding * 2);
+    const X = px => (px - b.x) * scale + o.padding;
+    const Y = py => (py - b.y) * scale + o.padding;
+    const P = id => {
+      const p = figure.points[id];
+      return p ? { x: X(p.x), y: Y(p.y) } : null;
+    };
+    const box = { x0: 3, y0: 3, x1: o.width - 3, y1: height - 3 };
+
+    const out = [];
+    out.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + o.width + ' ' + height +
+             '" width="' + o.width + '" height="' + height + '" role="img">');
+    if (o.background && o.background !== 'none') {
+      out.push('<rect width="100%" height="100%" fill="' + o.background + '"/>');
+    }
+    out.push('<g stroke-linecap="round" stroke-linejoin="round">');
+
+    /* lines */
+    for (const l of figure.lines || []) {
+      const a = P(l.a), c = P(l.b);
+      if (!a || !c) continue;
+      const len = Math.hypot(c.x - a.x, c.y - a.y) || 1e-9;
+      const d = { x: (c.x - a.x) / len, y: (c.y - a.y) / len };
+      const kind = l.kind || 'segment';
+      let from = a, to = c;
+      if (kind !== 'segment') {
+        const clip = clipToBox(a, d, box);
+        if (clip) {
+          const tStart = kind === 'line' ? clip.tMin : 0;
+          from = { x: a.x + d.x * tStart, y: a.y + d.y * tStart };
+          to = { x: a.x + d.x * clip.tMax, y: a.y + d.y * clip.tMax };
+        }
+      }
+      out.push('<line x1="' + f(from.x) + '" y1="' + f(from.y) + '" x2="' + f(to.x) +
+               '" y2="' + f(to.y) + '" stroke="' + o.color + '" stroke-width="' + o.stroke + '"/>');
+
+      const ang = Math.atan2(to.y - from.y, to.x - from.x);
+      const arrows = l.arrows || (kind === 'line' ? 'both' : kind === 'ray' ? 'end' : 'none');
+      if (arrows === 'end' || arrows === 'both') out.push(arrowHead(to.x, to.y, ang, o.arrow, o.color));
+      if (arrows === 'start' || arrows === 'both') {
+        out.push(arrowHead(from.x, from.y, ang + Math.PI, o.arrow, o.color));
+      }
+
+      /* Parallel marks: the chevrons a textbook puts on lines that belong to
+         the same parallel family. */
+      const ticks = l.ticks || 0;
+      if (ticks > 0) {
+        const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+        const step = o.stroke * 3.2, size = o.stroke * 3.4;
+        for (let i = 0; i < ticks; i++) {
+          const off = (i - (ticks - 1) / 2) * step;
+          const cx = mx + Math.cos(ang) * off, cy = my + Math.sin(ang) * off;
+          const back = ang + Math.PI;
+          out.push('<path d="M' + f(cx + Math.cos(back - 0.6) * size) + ' ' +
+                   f(cy + Math.sin(back - 0.6) * size) + 'L' + f(cx) + ' ' + f(cy) +
+                   'L' + f(cx + Math.cos(back + 0.6) * size) + ' ' +
+                   f(cy + Math.sin(back + 0.6) * size) +
+                   '" fill="none" stroke="' + o.color + '" stroke-width="' + o.stroke + '"/>');
+        }
+      }
+    }
+
+    /* angle marks and their labels */
+    for (const a of figure.angles || []) {
+      if (a.show === false) continue;
+      const v = P(a.vertex), fr = P(a.from), to = P(a.to);
+      if (!v || !fr || !to) continue;
+      const a1 = Math.atan2(fr.y - v.y, fr.x - v.x);
+      const a2 = Math.atan2(to.y - v.y, to.x - v.x);
+      let delta = a2 - a1;
+      while (delta <= -Math.PI) delta += Math.PI * 2;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      const r = a.radius ? a.radius * scale : o.arcRadius;
+      const measured = AM.geometry.measure(figure, a);
+
+      if (measured !== null && Math.abs(measured - 90) < 0.5) {
+        /* A right angle is drawn as a square, never as an arc. */
+        const s = r * 0.55;
+        const u = { x: Math.cos(a1), y: Math.sin(a1) }, w = { x: Math.cos(a2), y: Math.sin(a2) };
+        out.push('<path d="M' + f(v.x + u.x * s) + ' ' + f(v.y + u.y * s) +
+                 'L' + f(v.x + (u.x + w.x) * s) + ' ' + f(v.y + (u.y + w.y) * s) +
+                 'L' + f(v.x + w.x * s) + ' ' + f(v.y + w.y * s) +
+                 '" fill="none" stroke="' + o.color + '" stroke-width="' + o.stroke + '"/>');
+      } else {
+        const large = Math.abs(delta) > Math.PI ? 1 : 0;
+        const sweep = delta > 0 ? 1 : 0;
+        out.push('<path d="M' + f(v.x + Math.cos(a1) * r) + ' ' + f(v.y + Math.sin(a1) * r) +
+                 'A' + f(r) + ' ' + f(r) + ' 0 ' + large + ' ' + sweep + ' ' +
+                 f(v.x + Math.cos(a2) * r) + ' ' + f(v.y + Math.sin(a2) * r) +
+                 '" fill="none" stroke="' + o.color + '" stroke-width="' + o.stroke + '"/>');
+      }
+
+      if (a.label) {
+        const mid = a1 + delta / 2;
+        const lr = r + o.fontSize * 0.95;
+        out.push('<text x="' + f(v.x + Math.cos(mid) * lr) + '" y="' +
+                 f(v.y + Math.sin(mid) * lr) + '" font-family="' + o.fontFamily +
+                 '" font-size="' + o.fontSize + '" fill="' + o.color +
+                 '" text-anchor="middle" dominant-baseline="central">' + esc(a.label) + '</text>');
+      }
+    }
+
+    /* point dots and their names */
+    if (o.showPoints) {
+      const cx = X(b.x + b.w / 2), cy = Y(b.y + b.h / 2);
+      for (const id in figure.points) {
+        const pt = figure.points[id];
+        if (pt.show === false) continue;
+        const p = P(id);
+        out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' + o.pointRadius +
+                 '" fill="' + o.color + '"/>');
+        const label = pt.label === undefined ? id : pt.label;
+        if (label) {
+          /* Push the name away from the middle of the figure so it never lands
+             on top of a line. */
+          const ang = Math.atan2(p.y - cy, p.x - cx) || 0;
+          const d = o.fontSize * 1.05;
+          out.push('<text x="' + f(p.x + Math.cos(ang) * d) + '" y="' + f(p.y + Math.sin(ang) * d) +
+                   '" font-family="' + o.fontFamily + '" font-size="' + o.fontSize +
+                   '" fill="' + o.color + '" text-anchor="middle" dominant-baseline="central">' +
+                   esc(label) + '</text>');
+        }
+      }
+    }
+
+    for (const l of figure.labels || []) {
+      out.push('<text x="' + f(X(l.x)) + '" y="' + f(Y(l.y)) + '" font-family="' + o.fontFamily +
+               '" font-size="' + (l.size || o.fontSize) + '" fill="' + o.color +
+               '" text-anchor="middle" dominant-baseline="central">' + esc(l.text) + '</text>');
+    }
+
+    out.push('</g></svg>');
+    return out.join('\n');
+  }
+
+  AM.svg = { render, DEFAULTS };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — read one cropped figure into the geometry model.
+   The model is asked to report only what is drawn: no solving, no filling in
+   unknowns. Everything it returns is then cross-checked against itself. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+  const MODEL = 'gemini-3.6-flash';
+
+  const PROMPT = [
+    'This is one geometry figure cut from a Thai mathematics workbook chapter on parallel lines.',
+    'Report exactly what is DRAWN. Do not solve anything, do not compute unknown angles, and do',
+    'not correct the figure. If a value is not written on the figure, do not invent it.',
+    '',
+    'Coordinates: use a 0-1000 grid, x to the right, y downward, over the image as given.',
+    '',
+    'points: every labelled point, every place two drawn lines cross, and the end of every line.',
+    '  Give each an id. Use the printed letter as the id when there is one (A, B, E, ...);',
+    '  otherwise use p1, p2, ... and leave label empty.',
+    'lines: each straight stroke, as two point ids it passes through.',
+    '  kind is "line" when arrowheads appear at both ends, "ray" when at one end,',
+    '  "segment" when at neither. marks is the number of little arrow or tick marks drawn ON',
+    '  the line to show which lines are parallel (0 when there are none).',
+    'parallelGroups: ids of lines carrying the same parallel marks, grouped together.',
+    'angles: each angle that has an arc, a square corner, or a label. Give the vertex point id',
+    '  and the two point ids the two arms run towards. label is the text printed at that angle,',
+    '  copied character for character: "82°", "x", "y", "x + 50°", "2x". Empty string if the',
+    '  angle is marked but carries no text. Set rightAngle true only where a square corner is',
+    '  drawn.',
+    'notes: anything ambiguous, unreadable, or that you were unsure about.'
+  ].join('\n');
+
+  const SCHEMA = {
+    type: 'object',
+    properties: {
+      points: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
+                        label: { type: 'string' } },
+          required: ['id', 'x', 'y']
+        }
+      },
+      lines: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { id: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' },
+                        kind: { type: 'string', enum: ['line', 'ray', 'segment'] },
+                        marks: { type: 'integer' } },
+          required: ['id', 'from', 'to', 'kind']
+        }
+      },
+      parallelGroups: { type: 'array', items: { type: 'array', items: { type: 'string' } } },
+      angles: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { vertex: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' },
+                        label: { type: 'string' }, rightAngle: { type: 'boolean' } },
+          required: ['vertex', 'from', 'to']
+        }
+      },
+      notes: { type: 'string' }
+    },
+    required: ['points', 'lines', 'angles']
+  };
+
+  function buildRequest(base64, options) {
+    const o = options || {};
+    return {
+      model: o.model || MODEL,
+      input: [
+        { type: 'text', text: o.prompt || PROMPT },
+        { type: 'image', data: base64, mime_type: o.mimeType || 'image/png' }
+      ],
+      response_format: { type: 'text', mime_type: 'application/json', schema: SCHEMA }
+    };
+  }
+
+  /* The response envelope is not something to be precious about: find the first
+     string in it that parses as the JSON we asked for. If the shape changes,
+     this keeps working; if it cannot, the raw body goes into the error so the
+     problem is visible rather than mysterious. */
+  function parseResponse(body) {
+    const seen = [];
+    const walk = node => {
+      if (typeof node === 'string') { seen.push(node); return; }
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node && typeof node === 'object') { for (const k in node) walk(node[k]); }
+    };
+    walk(body);
+    for (const s of seen) {
+      const t = s.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+      if (t[0] !== '{') continue;
+      try {
+        const parsed = JSON.parse(t);
+        if (parsed && parsed.points && parsed.lines) return parsed;
+      } catch (e) { /* not this one */ }
+    }
+    if (body && body.points && body.lines) return body;
+    const err = new Error('ไม่พบข้อมูลรูปในคำตอบของ Gemini');
+    err.raw = JSON.stringify(body).slice(0, 1200);
+    throw err;
+  }
+
+  /* A label that is a plain number of degrees, as opposed to "x" or "x + 50°". */
+  function numericLabel(label) {
+    if (!label) return null;
+    const m = String(label).trim().match(/^(\d{1,3}(?:\.\d+)?)\s*°?$/);
+    if (!m) return null;
+    const v = parseFloat(m[1]);
+    return v > 0 && v < 360 ? v : null;
+  }
+
+  /* Turn the reported reading into a figure, and check the reading against
+     itself: the coordinates say what the angle measures, the label says what it
+     is supposed to be, and the two should agree. Where they do not, the number
+     was probably misread — 82 as 32 is the classic — so the constraint is left
+     switched off and the disagreement is reported rather than drawn over. */
+  function toFigure(reading, options) {
+    const o = Object.assign({ scale: 10, tolerance: 6 }, options || {});
+    const G = AM.geometry;
+    const fig = G.create();
+    const k = o.scale / 1000;
+
+    for (const p of reading.points || []) {
+      if (!p || !p.id) continue;
+      fig.points[p.id] = { x: (+p.x || 0) * k, y: (+p.y || 0) * k,
+                           label: p.label === undefined ? p.id : p.label };
+    }
+    const known = id => Object.prototype.hasOwnProperty.call(fig.points, id);
+
+    for (const l of reading.lines || []) {
+      if (!l || !known(l.from) || !known(l.to) || l.from === l.to) continue;
+      fig.lines.push({ id: l.id || ('l' + fig.lines.length), a: l.from, b: l.to,
+                       kind: l.kind || 'segment', ticks: Math.max(0, l.marks | 0) });
+    }
+    const hasLine = id => fig.lines.some(l => l.id === id);
+
+    for (const group of reading.parallelGroups || []) {
+      const ids = (group || []).filter(hasLine);
+      for (let i = 1; i < ids.length; i++) {
+        fig.constraints.push({ type: 'parallel', lines: [ids[0], ids[i]] });
+      }
+    }
+
+    const conflicts = [];
+    for (const a of reading.angles || []) {
+      if (!a || !known(a.vertex) || !known(a.from) || !known(a.to)) continue;
+      const label = a.label || '';
+      const angle = { vertex: a.vertex, from: a.from, to: a.to, label: label };
+      fig.angles.push(angle);
+      const claimed = a.rightAngle ? 90 : numericLabel(label);
+      if (claimed === null) continue;
+      const drawn = G.measure(fig, angle);
+      const off = drawn === null ? null : Math.abs(drawn - claimed);
+      const suspect = off === null || off > o.tolerance;
+      if (suspect) {
+        conflicts.push({ vertex: a.vertex, label: label, claimed: claimed,
+                         drawn: drawn === null ? null : Math.round(drawn * 10) / 10,
+                         off: off === null ? null : Math.round(off * 10) / 10 });
+      }
+      fig.constraints.push({ type: 'angle', vertex: a.vertex, from: a.from, to: a.to,
+                             value: claimed, enabled: !suspect, suspect: suspect });
+    }
+
+    G.captureSigns(fig);
+    fig.notes = reading.notes || '';
+    fig.conflicts = conflicts;
+    return fig;
+  }
+
+  function describeError(status, body) {
+    const detail = (body && body.error && body.error.message) || '';
+    if (status === 400 && /API key/i.test(detail)) return 'คีย์ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+    if (status === 401 || status === 403) return 'คีย์ใช้ไม่ได้หรือยังไม่ได้เปิดใช้งาน Gemini API';
+    if (status === 429) return 'เรียกใช้บ่อยเกินโควตา รอสักครู่แล้วลองใหม่';
+    if (status >= 500) return 'เซิร์ฟเวอร์ของ Gemini ขัดข้อง ลองใหม่อีกครั้ง';
+    return 'เรียก Gemini ไม่สำเร็จ (' + status + ')' + (detail ? ': ' + detail : '');
+  }
+
+  async function readFigure(base64, apiKey, options) {
+    if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
+    const o = options || {};
+    const res = await fetch(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      /* The key rides in a header, never in the URL, where it would end up in
+         logs and history. */
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildRequest(base64, o)),
+      signal: o.signal
+    });
+    let body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      const err = new Error(describeError(res.status, body));
+      err.status = res.status;
+      err.raw = body ? JSON.stringify(body).slice(0, 1200) : '';
+      throw err;
+    }
+    return toFigure(parseResponse(body), o);
+  }
+
+  AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
+                 describeError, PROMPT, SCHEMA, MODEL, ENDPOINT };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
 /* Angles Maker — UI. Everything happens locally: no network, no upload. */
 (function () {
   'use strict';
@@ -2283,6 +2989,78 @@ a.dl:hover { background: var(--accent-soft); }
     saveBytes(AM.zip.makeZip(entries), stem + '-figures.zip', 'application/zip');
   }
 
+  /* ---------- reading a figure with Gemini ---------- */
+
+  /* The key lives in this browser and nowhere else: not in the repository, not
+     on the server that serves the page, and never in a URL. */
+  const KEY_STORE = 'anglesMaker.geminiKey';
+  const getKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+  const setKey = v => {
+    try { v ? localStorage.setItem(KEY_STORE, v) : localStorage.removeItem(KEY_STORE); }
+    catch (e) { toast('เบราว์เซอร์นี้เก็บคีย์ไว้ไม่ได้ (โหมดส่วนตัว?)', 6000); }
+  };
+
+  function syncKeyPanel() {
+    const key = getKey();
+    $('#key-unset').hidden = !!key;
+    $('#key-set').hidden = !key;
+    $('#ai-state').textContent = key ? 'พร้อม' : 'ปิด';
+    if (key) $('#key-mask').textContent = key.slice(0, 6) + '…' + key.slice(-4);
+  }
+
+  function bytesToBase64(bytes) {
+    let s = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(s);
+  }
+
+  async function readWithAI(page, box) {
+    const key = getKey();
+    if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
+    status('กำลังอ่านรูปด้วย Gemini…');
+    try {
+      if (!box.png) box.png = await renderFigure(page, box);
+      /* The cleaned, deskewed crop is what goes to the model — the same image
+         that would have been pasted into Word. */
+      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
+      AM.geometry.solve(fig);
+      box.figure = fig;
+      showComparison(page, box);
+    } catch (e) {
+      toast('อ่านรูปไม่สำเร็จ: ' + (e && e.message), 9000);
+      if (e && e.raw) console.warn('Gemini response:', e.raw);
+    }
+    status(null);
+  }
+
+  function showComparison(page, box) {
+    const fig = box.figure;
+    $('#compare-crop').src = box.url || '';
+    $('#compare-svg').innerHTML = AM.svg.render(fig, { width: 380 });
+    const notes = $('#compare-notes');
+    notes.innerHTML = '';
+    for (const c of fig.conflicts || []) {
+      const d = el('div', 'conflict');
+      d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายเขียนว่า ' + c.claimed +
+        '° แต่รูปที่วาดวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
+        ' — ตรวจกับต้นฉบับก่อนใช้';
+      notes.appendChild(d);
+    }
+    if (!(fig.conflicts || []).length) {
+      notes.appendChild(el('div', 'ok-note', 'ตัวเลขบนป้ายกับรูปที่วาดตรงกันทุกมุม'));
+    }
+    if (fig.notes) notes.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + fig.notes));
+    $('#compare-svg-dl').onclick = () => {
+      const svg = AM.svg.render(fig, { width: 640 });
+      saveBytes(new TextEncoder().encode(svg),
+                AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
+    };
+    $('#compare').hidden = false;
+  }
+
   /* ---------- controls ---------- */
 
   function syncControls() {
@@ -2311,6 +3089,26 @@ a.dl:hover { background: var(--accent-soft); }
       renderBoxes(); renderList(); renderPages(); updateZipButton();
     };
     $('#btn-zip').onclick = exportZip;
+
+    syncKeyPanel();
+    $('#btn-key-save').onclick = () => {
+      const v = $('#in-key').value.trim();
+      if (!v) { toast('ยังไม่ได้ใส่คีย์', 3000); return; }
+      setKey(v);
+      $('#in-key').value = '';
+      syncKeyPanel();
+      toast('บันทึกคีย์แล้ว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น', 5000);
+    };
+    $('#btn-key-clear').onclick = () => { setKey(''); syncKeyPanel(); };
+    $('#btn-read').onclick = () => {
+      const page = active();
+      if (!page) return;
+      const box = page.boxes.find(b => b.id === state.selected) || page.boxes[0];
+      if (!box) { toast('เลือกรูปที่ต้องการก่อน', 3000); return; }
+      readWithAI(page, box);
+    };
+    $('#compare-close').onclick = () => { $('#compare').hidden = true; };
+    $('#compare').onclick = ev => { if (ev.target.id === 'compare') $('#compare').hidden = true; };
 
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
@@ -2374,7 +3172,8 @@ a.dl:hover { background: var(--accent-soft); }
   }
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
-  AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor };
+  AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
+             readWithAI, showComparison, getKey, bytesToBase64 };
 
   initControls();
   initEditing();

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'">
+      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://generativelanguage.googleapis.com">
 <title>Angles Maker — ตัดรูปมุมจากหน้าหนังสือ</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
@@ -75,6 +75,29 @@
       </label>
     </div>
 
+    <div class="panel" id="ai-panel">
+      <div class="panel-head"><h2>อ่านรูปด้วย AI</h2><span id="ai-state" class="pill">ปิด</span></div>
+      <p class="hint">แปลงรูปที่ตัดได้ให้เป็นเส้นและมุมที่แก้ไขค่าได้ แล้วส่งออกเป็นไฟล์ SVG
+         สำหรับวางใน Word</p>
+      <div id="key-unset">
+        <label class="field">
+          <span>Gemini API key</span>
+          <input id="in-key" type="password" spellcheck="false" autocomplete="off"
+                 placeholder="AIza…">
+          <small>ขอคีย์ฟรีได้ที่ aistudio.google.com/apikey — คีย์จะถูกเก็บไว้ในเบราว์เซอร์
+                 ของเครื่องนี้เท่านั้น ไม่ถูกส่งไปที่เซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
+        </label>
+        <div class="row"><button id="btn-key-save" class="ghost">บันทึกคีย์</button></div>
+      </div>
+      <div id="key-set" hidden>
+        <p class="hint">ใช้คีย์ <code id="key-mask"></code> อยู่</p>
+        <div class="row">
+          <button id="btn-read" class="primary">อ่านรูปที่เลือก</button>
+          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-head"><h2>ไฟล์ที่จะบันทึก</h2></div>
       <label class="field">
@@ -104,6 +127,25 @@
   </aside>
 </main>
 
+<div id="compare" class="compare" hidden>
+  <div class="compare-inner">
+    <header>
+      <h2>ตรวจสอบรูปที่ AI อ่านได้</h2>
+      <button id="compare-close" class="ghost">ปิด</button>
+    </header>
+    <p class="hint">เทียบรูปต้นฉบับกับรูปที่สร้างใหม่ทีละเส้นทีละมุม
+       ถ้าตรงกันจึงนำไปใช้ AI อ่านตัวเลขผิดได้</p>
+    <div class="compare-grid">
+      <figure><figcaption>ต้นฉบับที่ตัดมา</figcaption><img id="compare-crop" alt=""></figure>
+      <figure><figcaption>สร้างใหม่จากที่ AI อ่าน</figcaption><div id="compare-svg"></div></figure>
+    </div>
+    <div id="compare-notes"></div>
+    <div class="row">
+      <button id="compare-svg-dl" class="primary">ดาวน์โหลด SVG</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 
 <script src="js/core/util.js"></script>
@@ -115,6 +157,9 @@
 <script src="js/core/pngmeta.js"></script>
 <script src="js/core/zip.js"></script>
 <script src="js/core/synth.js"></script>
+<script src="js/core/geometry.js"></script>
+<script src="js/core/svg.js"></script>
+<script src="js/core/extract.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

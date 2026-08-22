@@ -56,6 +56,24 @@ nine inches you would get from a plain screenshot.
 - **Nothing at all is found** — draw the boxes by hand. That path is meant to be used, not a
   fallback: cropping, cleaning and naming are most of the value.
 
+## Reading figures with AI (optional)
+
+Paste a Gemini API key into the **อ่านรูปด้วย AI** panel and a cropped figure can be read into
+editable geometry — points, lines, parallel families and angle labels — then re-rendered as SVG.
+
+The key is held in `localStorage` in that browser. It is never committed, never reaches the server
+that hosts the page, and travels in the `x-goog-api-key` header rather than a URL. The app works
+completely without a key; this step is additive.
+
+Model: `gemini-3.6-flash`. The prompt asks it to report only what is drawn — no solving, no filling
+in unknown angles.
+
+**Every reading is cross-checked against itself.** The model returns both coordinates and label text,
+so the angle the drawing measures can be compared with the number printed on it. When they disagree
+by more than a few degrees the number was probably misread — 82 as 32 is the classic — and that
+angle's constraint is left switched off and reported, rather than the figure being bent to match a
+misreading. The comparison view puts the original crop beside the reconstruction so a person decides.
+
 ## How it works
 
 Analysis runs on a copy of the photo scaled to 1600 px; export always re-crops the original pixels.

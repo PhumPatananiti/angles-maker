@@ -659,6 +659,78 @@
     saveBytes(AM.zip.makeZip(entries), stem + '-figures.zip', 'application/zip');
   }
 
+  /* ---------- reading a figure with Gemini ---------- */
+
+  /* The key lives in this browser and nowhere else: not in the repository, not
+     on the server that serves the page, and never in a URL. */
+  const KEY_STORE = 'anglesMaker.geminiKey';
+  const getKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+  const setKey = v => {
+    try { v ? localStorage.setItem(KEY_STORE, v) : localStorage.removeItem(KEY_STORE); }
+    catch (e) { toast('เบราว์เซอร์นี้เก็บคีย์ไว้ไม่ได้ (โหมดส่วนตัว?)', 6000); }
+  };
+
+  function syncKeyPanel() {
+    const key = getKey();
+    $('#key-unset').hidden = !!key;
+    $('#key-set').hidden = !key;
+    $('#ai-state').textContent = key ? 'พร้อม' : 'ปิด';
+    if (key) $('#key-mask').textContent = key.slice(0, 6) + '…' + key.slice(-4);
+  }
+
+  function bytesToBase64(bytes) {
+    let s = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(s);
+  }
+
+  async function readWithAI(page, box) {
+    const key = getKey();
+    if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
+    status('กำลังอ่านรูปด้วย Gemini…');
+    try {
+      if (!box.png) box.png = await renderFigure(page, box);
+      /* The cleaned, deskewed crop is what goes to the model — the same image
+         that would have been pasted into Word. */
+      const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
+      AM.geometry.solve(fig);
+      box.figure = fig;
+      showComparison(page, box);
+    } catch (e) {
+      toast('อ่านรูปไม่สำเร็จ: ' + (e && e.message), 9000);
+      if (e && e.raw) console.warn('Gemini response:', e.raw);
+    }
+    status(null);
+  }
+
+  function showComparison(page, box) {
+    const fig = box.figure;
+    $('#compare-crop').src = box.url || '';
+    $('#compare-svg').innerHTML = AM.svg.render(fig, { width: 380 });
+    const notes = $('#compare-notes');
+    notes.innerHTML = '';
+    for (const c of fig.conflicts || []) {
+      const d = el('div', 'conflict');
+      d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายเขียนว่า ' + c.claimed +
+        '° แต่รูปที่วาดวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
+        ' — ตรวจกับต้นฉบับก่อนใช้';
+      notes.appendChild(d);
+    }
+    if (!(fig.conflicts || []).length) {
+      notes.appendChild(el('div', 'ok-note', 'ตัวเลขบนป้ายกับรูปที่วาดตรงกันทุกมุม'));
+    }
+    if (fig.notes) notes.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + fig.notes));
+    $('#compare-svg-dl').onclick = () => {
+      const svg = AM.svg.render(fig, { width: 640 });
+      saveBytes(new TextEncoder().encode(svg),
+                AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
+    };
+    $('#compare').hidden = false;
+  }
+
   /* ---------- controls ---------- */
 
   function syncControls() {
@@ -687,6 +759,26 @@
       renderBoxes(); renderList(); renderPages(); updateZipButton();
     };
     $('#btn-zip').onclick = exportZip;
+
+    syncKeyPanel();
+    $('#btn-key-save').onclick = () => {
+      const v = $('#in-key').value.trim();
+      if (!v) { toast('ยังไม่ได้ใส่คีย์', 3000); return; }
+      setKey(v);
+      $('#in-key').value = '';
+      syncKeyPanel();
+      toast('บันทึกคีย์แล้ว เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น', 5000);
+    };
+    $('#btn-key-clear').onclick = () => { setKey(''); syncKeyPanel(); };
+    $('#btn-read').onclick = () => {
+      const page = active();
+      if (!page) return;
+      const box = page.boxes.find(b => b.id === state.selected) || page.boxes[0];
+      if (!box) { toast('เลือกรูปที่ต้องการก่อน', 3000); return; }
+      readWithAI(page, box);
+    };
+    $('#compare-close').onclick = () => { $('#compare').hidden = true; };
+    $('#compare').onclick = ev => { if (ev.target.id === 'compare') $('#compare').hidden = true; };
 
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
@@ -750,7 +842,8 @@
   }
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
-  AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor };
+  AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
+             readWithAI, showComparison, getKey, bytesToBase64 };
 
   initControls();
   initEditing();

@@ -164,6 +164,24 @@ a.dl:hover { background: var(--accent-soft); }
 .fig .dl.waiting { color: var(--line); letter-spacing: 1px; font-size: 11px; cursor: default; }
 .empty { color: var(--muted); font-size: 12.5px; padding: 10px 2px; }
 
+.compare { position: fixed; inset: 0; background: #0009; z-index: 30; display: flex;
+  align-items: center; justify-content: center; padding: 20px; }
+.compare-inner { background: var(--panel); border-radius: 12px; padding: 18px; max-width: 900px;
+  width: 100%; max-height: 92vh; overflow: auto; }
+.compare-inner header { display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px; }
+.compare-inner h2 { font-size: 16px; margin: 0; }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
+.compare-grid figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+  background: #fff; }
+.compare-grid figcaption { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.compare-grid img, .compare-grid svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.conflict { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 8px 10px;
+  border-radius: 0 6px 6px 0; margin-bottom: 6px; font-size: 12.5px; }
+.ok-note { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
+code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+@media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+
 .toast {
   position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
   background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px;
