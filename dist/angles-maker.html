@@ -1,0 +1,2234 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'">
+<title>Angles Maker — ตัดรูปมุมจากหน้าหนังสือ</title>
+<style>
+:root {
+  --bg: #f6f6f4;
+  --panel: #ffffff;
+  --ink: #1a1a19;
+  --muted: #6b6b66;
+  --line: #e0e0da;
+  --accent: #b4472e;
+  --accent-soft: #b4472e22;
+  --stage: #2b2b29;
+  --radius: 8px;
+}
+* { box-sizing: border-box; }
+/* .drop, .side and friends set display, which outranks the user-agent rule for
+   [hidden] and leaves them visible underneath the page. */
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 14px/1.7 -apple-system, BlinkMacSystemFont, "Sukhumvit Set", "Noto Sans Thai",
+        "Leelawadee UI", Thonburi, "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.brand { font-weight: 650; letter-spacing: -0.01em; }
+.brand .sub { font-weight: 400; color: var(--muted); margin-left: 10px; font-size: 13px; }
+.bar-actions { display: flex; gap: 8px; }
+
+button {
+  font: inherit; padding: 7px 13px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer;
+}
+button:hover { background: #f0efec; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.big { padding: 11px 20px; font-size: 15px; margin-top: 6px; }
+button:disabled { opacity: 0.45; cursor: default; }
+
+.pages {
+  display: flex; gap: 8px; padding: 8px 16px; background: var(--panel);
+  border-bottom: 1px solid var(--line); overflow-x: auto; flex: none;
+}
+.thumb {
+  position: relative; border: 2px solid transparent; border-radius: 6px;
+  padding: 0; background: #ddd; cursor: pointer; flex: none; line-height: 0;
+}
+.thumb img { height: 54px; width: auto; border-radius: 4px; display: block; }
+.thumb.active { border-color: var(--accent); }
+.thumb .badge {
+  position: absolute; right: -5px; top: -6px; background: var(--ink); color: #fff;
+  border-radius: 9px; font-size: 10px; padding: 1px 5px; line-height: 1.4;
+}
+.thumb .x {
+  position: absolute; left: -6px; top: -6px; background: var(--panel); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 50%; width: 17px; height: 17px;
+  font-size: 11px; line-height: 15px; text-align: center; display: none;
+}
+.thumb:hover .x { display: block; }
+
+main { flex: 1; display: flex; min-height: 0; }
+.stage { flex: 1; position: relative; background: var(--stage); overflow: hidden; }
+.viewport { position: absolute; inset: 0; overflow: auto; padding: 20px; }
+.canvas-wrap { position: relative; margin: 0 auto; line-height: 0; }
+.canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
+  box-shadow: 0 2px 18px #0006; border-radius: 2px; }
+.overlay { position: absolute; inset: 0; cursor: crosshair; }
+
+.box {
+  position: absolute; border: 2px solid var(--accent); background: #b4472e14;
+  cursor: move;
+}
+.box .tag {
+  position: absolute; left: -2px; top: -21px; background: var(--accent); color: #fff;
+  font-size: 11px; padding: 1px 6px; border-radius: 4px 4px 0 0; white-space: nowrap;
+}
+.box.sel { border-width: 2px; box-shadow: 0 0 0 2px #fff9, 0 0 0 4px var(--accent); }
+.box .h {
+  position: absolute; width: 11px; height: 11px; background: #fff;
+  border: 1.5px solid var(--accent); border-radius: 2px;
+}
+.box .h.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.box .h.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.box .h.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.box .h.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.box .h.n { left: 50%; top: -6px; margin-left: -5px; cursor: ns-resize; }
+.box .h.s { left: 50%; bottom: -6px; margin-left: -5px; cursor: ns-resize; }
+.box .h.w { left: -6px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+.box .h.e { right: -6px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+
+.drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 30px; text-align: center; color: #efeee9; }
+.drop-inner { max-width: 460px; }
+.drop h1 { font-size: 22px; font-weight: 620; margin: 0 0 12px; line-height: 1.5; }
+.drop p { color: #bdbcb4; margin: 0 0 8px; }
+.drop .muted { font-size: 12.5px; color: #8f8e86; margin-top: 14px; }
+body.dragging .drop { outline: 3px dashed var(--accent); outline-offset: -14px; }
+
+.status {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  background: #000000cc; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px;
+}
+
+.side {
+  width: 320px; flex: none; background: var(--panel); border-left: 1px solid var(--line);
+  overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px;
+}
+.panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.panel h2 { font-size: 13px; letter-spacing: 0.01em;
+  color: var(--muted); margin: 0; font-weight: 700; }
+.pill { background: var(--accent-soft); color: var(--accent); border-radius: 10px;
+  padding: 1px 8px; font-size: 12px; font-weight: 650; }
+.hint { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; line-height: 1.75; }
+kbd { background: var(--bg); border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 4px; font: inherit; font-size: 11px; }
+
+.field { display: block; margin-bottom: 11px; }
+.field > span { display: flex; justify-content: space-between; font-size: 12.5px;
+  color: var(--muted); margin-bottom: 4px; }
+.field output { color: var(--ink); font-variant-numeric: tabular-nums; }
+.field small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 4px;
+  line-height: 1.6; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+input[type=text], select { width: 100%; font: inherit; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.check { display: flex; align-items: center; gap: 7px; font-size: 13px; margin-bottom: 11px; }
+.row { display: flex; gap: 8px; margin-top: 4px; }
+.row button { flex: 1; }
+
+.fig-list { display: flex; flex-direction: column; gap: 6px; max-height: 42vh; overflow-y: auto; }
+.fig {
+  display: flex; align-items: center; gap: 8px; padding: 5px; border: 1px solid var(--line);
+  border-radius: 6px; cursor: pointer; background: var(--panel);
+}
+.fig.sel { border-color: var(--accent); background: var(--accent-soft); }
+.fig canvas { width: 54px; height: 38px; object-fit: contain; background: #fff;
+  border: 1px solid var(--line); border-radius: 3px; flex: none; }
+.fig .name { flex: 1; min-width: 0; font-size: 12.5px; }
+.fig .name input { width: 100%; border: 0; background: transparent; font: inherit; padding: 2px; }
+.fig .name input:focus { background: var(--bg); border-radius: 4px; outline: 1px solid var(--line); }
+.fig .dl { border: 0; background: transparent; padding: 4px 6px; font-size: 15px; color: var(--muted); }
+.fig .dl:hover { color: var(--accent); background: transparent; }
+.empty { color: var(--muted); font-size: 12.5px; padding: 10px 2px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 8px;
+  font-size: 13px; max-width: 70ch; box-shadow: 0 6px 24px #0004; z-index: 20;
+}
+.toast code { background: #ffffff22; padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 860px) {
+  main { flex-direction: column; }
+  .side { width: auto; border-left: 0; border-top: 1px solid var(--line); max-height: 46vh; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → ไฟล์ PNG แยกทีละรูป</span></div>
+  <div class="bar-actions">
+    <button id="btn-add" class="primary">เพิ่มรูปภาพ…</button>
+    <button id="btn-demo" class="ghost">หน้าตัวอย่าง</button>
+    <input id="file-input" type="file" accept="image/*" multiple hidden>
+  </div>
+</header>
+
+<div id="pages" class="pages" hidden></div>
+
+<main>
+  <section class="stage">
+    <div id="drop" class="drop">
+      <div class="drop-inner">
+        <h1>ลากรูปถ่ายหน้าหนังสือมาวางตรงนี้</h1>
+        <p>โปรแกรมจะหารูปเรขาคณิตทุกรูปในหน้านั้น ปรับให้ตรง ลบเงาและพื้นสีเทาออก
+           แล้วบันทึกเป็นไฟล์ PNG แยกทีละรูป พร้อมนำไปวางในข้อสอบ Word ได้ทันที</p>
+        <p>ไม่มีการอัปโหลดไฟล์ขึ้นอินเทอร์เน็ต ทุกอย่างทำงานอยู่ในเครื่องนี้ทั้งหมด
+           และใช้งานได้แม้ไม่ต่อเน็ต</p>
+        <button id="btn-add2" class="primary big">เลือกรูปภาพ…</button>
+        <p class="muted">รองรับไฟล์ JPG, PNG และ WebP — ไฟล์ HEIC จาก iPhone บางเบราว์เซอร์เปิดไม่ได้
+           ถ้าเปิดไม่ได้โปรแกรมจะบอกวิธีแปลงไฟล์ให้</p>
+      </div>
+    </div>
+    <div id="viewport" class="viewport" hidden>
+      <div id="canvas-wrap" class="canvas-wrap">
+        <canvas id="page-canvas"></canvas>
+        <div id="overlay" class="overlay"></div>
+      </div>
+    </div>
+    <div id="status" class="status" hidden></div>
+  </section>
+
+  <aside class="side" id="side" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>รูปที่ตัดได้</h2>
+        <span id="fig-count" class="pill">0</span>
+      </div>
+      <p class="hint">ลากบนหน้ากระดาษเพื่อเพิ่มกรอบใหม่ · ลากกรอบเพื่อย้าย · ลากขอบเพื่อปรับขนาด ·
+         กด <kbd>⌫</kbd> เพื่อลบ · กด <kbd>Ctrl</kbd>+<kbd>Z</kbd> (หรือ <kbd>⌘Z</kbd> บน Mac) เพื่อย้อนกลับ</p>
+      <div id="fig-list" class="fig-list"></div>
+      <div class="row">
+        <button id="btn-redetect" class="ghost">ค้นหาใหม่</button>
+        <button id="btn-clear" class="ghost">ลบกรอบทั้งหมด</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>หน้ากระดาษ</h2></div>
+      <label class="field">
+        <span>หมุนหน้ากระดาษ <output id="out-angle">0.0°</output></span>
+        <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
+        <small>ปกติโปรแกรมปรับให้ตรงเองอยู่แล้ว ปรับตรงนี้เฉพาะตอนที่หน้ายังเอียงอยู่</small>
+      </label>
+      <label class="field">
+        <span>ขนาดตัวหนังสือในหน้า <output id="out-th">อัตโนมัติ</output></span>
+        <input id="in-th" type="range" min="0" max="60" step="1" value="0">
+        <small>เพิ่มค่านี้ถ้าโปรแกรมจับเศษตัวหนังสือมาเป็นรูป
+               ลดค่าลงถ้ารูปเล็ก ๆ ถูกมองข้าม</small>
+      </label>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>ไฟล์ที่จะบันทึก</h2></div>
+      <label class="field">
+        <span>รูปแบบภาพ</span>
+        <select id="in-mode">
+          <option value="gray">โทนเทาสะอาด (แนะนำ)</option>
+          <option value="bw">ขาวดำล้วน</option>
+          <option value="transparent">พื้นหลังโปร่งใส</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>ความกว้าง <output id="out-width">900 พิกเซล</output></span>
+        <input id="in-width" type="range" min="0" max="2000" step="50" value="900">
+        <small>ตั้งเป็น 0 เพื่อใช้ขนาดเดิม ทุกไฟล์บันทึกที่ความละเอียด 300 dpi
+               ดังนั้น 900 พิกเซล จะกว้างประมาณ 3 นิ้วเมื่อวางใน Word</small>
+      </label>
+      <label class="check"><input id="in-bolder" type="checkbox"> ทำเส้นให้หนาขึ้น</label>
+      <label class="field">
+        <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
+        <input id="in-prefix" type="text" value="q" spellcheck="false">
+        <small>เช่น ตั้งเป็น q จะได้ q01.png, q02.png ไปเรื่อย ๆ ตามลำดับข้อ</small>
+      </label>
+      <div class="row">
+        <button id="btn-zip" class="primary">ดาวน์โหลดทั้งหมด (.zip)</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* Angles Maker — shared helpers. Loads as a classic script in the browser and
+   via require() in Node; both just attach to a global AM namespace. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  const CRC_TABLE = (function () {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes, seed) {
+    let c = (seed === undefined ? 0xFFFFFFFF : seed) >>> 0;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+
+  /* p in [0,1]. Sorts a copy, so callers keep their array. */
+  function percentile(values, p) {
+    if (!values.length) return 0;
+    const a = Array.prototype.slice.call(values).sort((x, y) => x - y);
+    const i = clamp(Math.round((a.length - 1) * p), 0, a.length - 1);
+    return a[i];
+  }
+
+  /* Bounding box of a w x h rectangle rotated by rad. Must match the canvas
+     convention exactly: both scales rotate about their own centre, so this is
+     linear in scale and box_fullres === box_analysis / s. */
+  function rotatedSize(w, h, rad) {
+    const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+    return { w: Math.round(w * c + h * s), h: Math.round(w * s + h * c) };
+  }
+
+  function rectsOverlap(a, b) {
+    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  }
+
+  /* Gap between two rectangles: 0 if they touch or overlap. */
+  function rectGap(a, b) {
+    const dx = Math.max(0, Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w)));
+    const dy = Math.max(0, Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h)));
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function unionRect(a, b) {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+  }
+
+  function intersectionOverUnion(a, b) {
+    const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+    const x2 = Math.min(a.x + a.w, b.x + b.w), y2 = Math.min(a.y + a.h, b.y + b.h);
+    if (x2 <= x || y2 <= y) return 0;
+    const inter = (x2 - x) * (y2 - y);
+    return inter / (a.w * a.h + b.w * b.h - inter);
+  }
+
+  /* Zip entry names come from a user-editable label. */
+  function sanitizeName(name, fallback) {
+    let s = String(name == null ? '' : name)
+      .replace(/[\/\\:*?"<>|]/g, '-')
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .replace(/^\.+/, '')
+      .trim();
+    if (s.length > 80) s = s.slice(0, 80);
+    return s || (fallback || 'figure');
+  }
+
+  function uniqueName(name, taken) {
+    if (!taken.has(name)) { taken.add(name); return name; }
+    const dot = name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    let i = 2, candidate;
+    do { candidate = stem + '-' + i + ext; i++; } while (taken.has(candidate));
+    taken.add(candidate);
+    return candidate;
+  }
+
+  AM.util = { crc32, clamp, percentile, rotatedSize, rectsOverlap, rectGap, unionRect,
+              intersectionOverUnion, sanitizeName, uniqueName };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — pixel operations. Pure JS on plain typed arrays, no DOM, so the
+   same code runs in the browser and under Node for tests. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+  const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+
+  function toGray(rgba, w, h) {
+    const g = new Uint8Array(w * h);
+    for (let i = 0, p = 0; i < g.length; i++, p += 4) {
+      g[i] = (rgba[p] * 77 + rgba[p + 1] * 151 + rgba[p + 2] * 28) >> 8;
+    }
+    return g;
+  }
+
+  function grayToRGBA(g, w, h) {
+    const out = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0, p = 0; i < g.length; i++, p += 4) {
+      out[p] = out[p + 1] = out[p + 2] = g[i];
+      out[p + 3] = 255;
+    }
+    return out;
+  }
+
+  /* Sliding-window 1D maximum, O(n) via a monotonic deque. dir 1 = max, -1 = min. */
+  function slide1D(src, dst, len, stride, offset, r, dir) {
+    const idx = new Int32Array(len);
+    let head = 0, tail = 0;
+    const val = i => dir > 0 ? src[offset + i * stride] : -src[offset + i * stride];
+    for (let i = 0; i < len + r; i++) {
+      if (i < len) {
+        while (tail > head && val(idx[tail - 1]) <= val(i)) tail--;
+        idx[tail++] = i;
+      }
+      const o = i - r;
+      if (o >= 0) {
+        while (idx[head] < o - r) head++;
+        dst[offset + o * stride] = src[offset + idx[head] * stride];
+      }
+    }
+  }
+
+  /* Separable morphology over a (2rx+1) x (2ry+1) rectangle. */
+  function morphXY(src, w, h, rx, ry, dir) {
+    let cur = src;
+    if (rx > 0) {
+      const tmp = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) slide1D(cur, tmp, w, 1, y * w, rx, dir);
+      cur = tmp;
+    }
+    if (ry > 0) {
+      const out = new Uint8Array(w * h);
+      for (let x = 0; x < w; x++) slide1D(cur, out, h, w, x, ry, dir);
+      cur = out;
+    }
+    return cur === src ? src.slice() : cur;
+  }
+  function morph(src, w, h, r, dir) { return morphXY(src, w, h, r, r, dir); }
+  const maxFilter = (s, w, h, r) => morph(s, w, h, r, 1);
+  const minFilter = (s, w, h, r) => morph(s, w, h, r, -1);
+
+  /* Summed-area table, (w+1) x (h+1), for O(1) window means. */
+  function integral(src, w, h, square) {
+    const I = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let rowSum = 0;
+      for (let x = 0; x < w; x++) {
+        const v = src[y * w + x];
+        rowSum += square ? v * v : v;
+        I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + rowSum;
+      }
+    }
+    return I;
+  }
+
+  function boxMean(I, w, x0, y0, x1, y1) {
+    const W = w + 1;
+    const s = I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0];
+    return s / ((x1 - x0) * (y1 - y0));
+  }
+
+  function boxBlur(src, w, h, r) {
+    const I = integral(src, w, h, false);
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+        out[y * w + x] = boxMean(I, w, x0, y0, x1, y1) + 0.5;
+      }
+    }
+    return out;
+  }
+
+  /* Paper estimate: ink is dark and thin, so a local maximum wipes it out and
+     leaves the illumination field. Clamped at 60 so a near-black region (the
+     dark surround beyond the page edge) cannot blow up the division. */
+  function estimateBackground(gray, w, h, radius) {
+    const r = radius || Math.max(6, Math.round(0.02 * Math.min(w, h)));
+    const bg = maxFilter(gray, w, h, r);
+    const smooth = boxBlur(bg, w, h, Math.max(2, r >> 1));
+    for (let i = 0; i < smooth.length; i++) if (smooth[i] < 60) smooth[i] = 60;
+    return smooth;
+  }
+
+  /* Divide out the illumination field: paper -> ~255, ink keeps its contrast. */
+  function flatten(gray, bg, w, h) {
+    const out = new Uint8Array(w * h);
+    for (let i = 0; i < out.length; i++) out[i] = clamp((gray[i] * 255 / bg[i]) | 0, 0, 255);
+    return out;
+  }
+
+  function flattenImage(gray, w, h, radius) {
+    return flatten(gray, estimateBackground(gray, w, h, radius), w, h);
+  }
+
+  /* Sauvola local threshold plus an absolute gate. The gate is what removes
+     bleed-through from the reverse side of the page: it is real line art and
+     locally high-contrast, so an adaptive threshold alone will keep it. */
+  function sauvola(gray, w, h, opts) {
+    const o = opts || {};
+    const win = Math.max(7, o.window || Math.round(0.04 * Math.min(w, h)) | 1);
+    const k = o.k === undefined ? 0.25 : o.k;
+    const R = 128;
+    const absMax = o.absMax === undefined ? 200 : o.absMax;
+    const I = integral(gray, w, h, false), I2 = integral(gray, w, h, true);
+    const r = win >> 1;
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const v = gray[i];
+        if (v > absMax) continue;
+        const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+        const mean = boxMean(I, w, x0, y0, x1, y1);
+        const meanSq = boxMean(I2, w, x0, y0, x1, y1);
+        const sd = Math.sqrt(Math.max(0, meanSq - mean * mean));
+        if (v < mean * (1 + k * (sd / R - 1))) mask[i] = 1;
+      }
+    }
+    return mask;
+  }
+
+  function dilateMask(mask, w, h, r) { return morph(mask, w, h, r, 1); }
+  function erodeMask(mask, w, h, r) { return morph(mask, w, h, r, -1); }
+
+  /* Black/white point stretch. bp/wp are 0..255 on the flattened image. */
+  function levels(gray, bp, wp) {
+    const out = new Uint8Array(gray.length);
+    const span = Math.max(1, wp - bp);
+    for (let i = 0; i < gray.length; i++) out[i] = clamp(((gray[i] - bp) * 255 / span) | 0, 0, 255);
+    return out;
+  }
+
+  /* Bilinear resample. Uses the same centre-to-centre convention as
+     canvas translate(W/2,H/2) -> rotate(rad) -> drawImage(-w/2,-h/2). */
+  function rotateGray(src, w, h, rad, fill) {
+    const size = AM.util.rotatedSize(w, h, rad);
+    const W = size.w, H = size.h;
+    const dst = new Uint8Array(W * H);
+    if (fill) dst.fill(fill);
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const cx = w / 2, cy = h / 2, ux = W / 2, uy = H / 2;
+    for (let v = 0; v < H; v++) {
+      const dv = v - uy;
+      for (let u = 0; u < W; u++) {
+        const du = u - ux;
+        const x = cos * du + sin * dv + cx;
+        const y = -sin * du + cos * dv + cy;
+        if (x < 0 || y < 0 || x >= w - 1 || y >= h - 1) continue;
+        const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0;
+        const a = src[y0 * w + x0], b = src[y0 * w + x0 + 1];
+        const c = src[(y0 + 1) * w + x0], d = src[(y0 + 1) * w + x0 + 1];
+        dst[v * W + u] = (a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) +
+                          c * (1 - fx) * fy + d * fx * fy) | 0;
+      }
+    }
+    return { data: dst, width: W, height: H };
+  }
+
+  function rotateMask(src, w, h, rad) {
+    const g = new Uint8Array(src.length);
+    for (let i = 0; i < src.length; i++) g[i] = src[i] ? 255 : 0;
+    const r = rotateGray(g, w, h, rad, 0);
+    const m = new Uint8Array(r.data.length);
+    for (let i = 0; i < m.length; i++) m[i] = r.data[i] > 127 ? 1 : 0;
+    return { data: m, width: r.width, height: r.height };
+  }
+
+  function downscaleGray(src, w, h, targetW) {
+    const scale = targetW / w;
+    const W = Math.max(1, Math.round(w * scale)), H = Math.max(1, Math.round(h * scale));
+    const out = new Uint8Array(W * H);
+    const bx = w / W, by = h / H;
+    for (let y = 0; y < H; y++) {
+      const y0 = (y * by) | 0, y1 = Math.min(h, Math.max(y0 + 1, ((y + 1) * by) | 0));
+      for (let x = 0; x < W; x++) {
+        const x0 = (x * bx) | 0, x1 = Math.min(w, Math.max(x0 + 1, ((x + 1) * bx) | 0));
+        let s = 0, n = 0;
+        for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) { s += src[yy * w + xx]; n++; }
+        out[y * W + x] = n ? (s / n) | 0 : 255;
+      }
+    }
+    return { data: out, width: W, height: H, scale: W / w };
+  }
+
+  /* Two-pass connected components (8-connected) with union-find.
+     `stats` accumulates the mean flattened darkness per component, which is how
+     bleed-through gets separated from real ink. */
+  function connectedComponents(mask, w, h, grayForStats) {
+    const labels = new Int32Array(w * h);
+    const parent = [0];
+    const find = a => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+    const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); };
+    let next = 1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!mask[i]) continue;
+        let best = 0;
+        for (let dy = -1; dy <= 0; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dy === 0 && dx >= 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w) continue;
+            const l = labels[ny * w + nx];
+            if (!l) continue;
+            best = best ? (union(best, l), Math.min(find(best), find(l))) : l;
+          }
+        }
+        if (!best) { best = next; parent[next] = next; next++; }
+        labels[i] = best;
+      }
+    }
+    const remap = new Int32Array(next);
+    let count = 0;
+    for (let l = 1; l < next; l++) if (find(l) === l) remap[l] = count++;
+    const comps = [];
+    for (let i = 0; i < count; i++) {
+      comps.push({ id: i, x0: 1e9, y0: 1e9, x1: -1, y1: -1, area: 0, darkSum: 0,
+                   maxRunH: 0, maxRunV: 0 });
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const l = labels[i];
+        if (!l) { labels[i] = -1; continue; }
+        const id = remap[find(l)];
+        labels[i] = id;
+        const c = comps[id];
+        if (x < c.x0) c.x0 = x;
+        if (y < c.y0) c.y0 = y;
+        if (x > c.x1) c.x1 = x;
+        if (y > c.y1) c.y1 = y;
+        c.area++;
+        if (grayForStats) c.darkSum += 255 - grayForStats[i];
+      }
+    }
+    /* Longest unbroken run of one label, per direction. Only used to tell a
+       drawn straight line (one continuous stroke, possibly carrying arrowheads
+       that inflate its bounding box) from a line of text (broken between
+       glyphs) — both are wide and flat, and nothing else separates them. */
+    for (let y = 0; y < h; y++) {
+      let run = 0, prev = -1;
+      for (let x = 0; x <= w; x++) {
+        const id = x < w ? labels[y * w + x] : -1;
+        if (id === prev && id >= 0) run++;
+        else {
+          if (prev >= 0 && run > comps[prev].maxRunH) comps[prev].maxRunH = run;
+          prev = id; run = 1;
+        }
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let run = 0, prev = -1;
+      for (let y = 0; y <= h; y++) {
+        const id = y < h ? labels[y * w + x] : -1;
+        if (id === prev && id >= 0) run++;
+        else {
+          if (prev >= 0 && run > comps[prev].maxRunV) comps[prev].maxRunV = run;
+          prev = id; run = 1;
+        }
+      }
+    }
+    for (const c of comps) {
+      c.w = c.x1 - c.x0 + 1;
+      c.h = c.y1 - c.y0 + 1;
+      c.fill = c.area / (c.w * c.h);
+      c.darkness = c.area ? c.darkSum / c.area / 255 : 0;
+      c.rect = { x: c.x0, y: c.y0, w: c.w, h: c.h };
+    }
+    return { labels, comps };
+  }
+
+  AM.image = { toGray, grayToRGBA, maxFilter, minFilter, morphXY, integral, boxMean, boxBlur,
+               estimateBackground, flatten, flattenImage, sauvola, dilateMask, erodeMask,
+               levels, rotateGray, rotateMask, downscaleGray, connectedComponents };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — skew estimation by projection profile.
+   Works on the ink point set rather than on rotated copies of the image: one
+   pass over ~40k points per candidate angle instead of a full resample. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  function collectPoints(mask, w, h, maxPoints) {
+    let total = 0;
+    for (let i = 0; i < mask.length; i++) if (mask[i]) total++;
+    const stride = Math.max(1, Math.ceil(total / (maxPoints || 40000)));
+    const xs = [], ys = [];
+    let n = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!mask[y * w + x]) continue;
+        if (n++ % stride) continue;
+        xs.push(x - w / 2);
+        ys.push(y - h / 2);
+      }
+    }
+    return { xs, ys, total };
+  }
+
+  /* Destination row for a point once the image is rotated by rad, matching
+     image.rotateGray: dv = x*sin + y*cos. */
+  function profileScore(pts, rad, span) {
+    const sin = Math.sin(rad), cos = Math.cos(rad);
+    const hist = new Float64Array(span);
+    const off = span / 2;
+    const { xs, ys } = pts;
+    for (let i = 0; i < xs.length; i++) {
+      const v = (xs[i] * sin + ys[i] * cos + off) | 0;
+      if (v >= 0 && v < span) hist[v]++;
+    }
+    let score = 0;
+    for (let i = 0; i < span; i++) score += hist[i] * hist[i];
+    return score;
+  }
+
+  function estimateSkew(mask, w, h, opts) {
+    const o = opts || {};
+    const maxDeg = o.maxDegrees === undefined ? 10 : o.maxDegrees;
+    const pts = collectPoints(mask, w, h, o.maxPoints);
+    const span = Math.ceil(Math.sqrt(w * w + h * h)) + 2;
+    if (pts.xs.length < 200) return { radians: 0, degrees: 0, prominence: 0, applied: false };
+
+    const scores = [];
+    let best = { deg: 0, score: -1 };
+    for (let deg = -maxDeg; deg <= maxDeg + 1e-9; deg += 0.5) {
+      const s = profileScore(pts, deg * Math.PI / 180, span);
+      scores.push(s);
+      if (s > best.score) best = { deg, score: s };
+    }
+    for (let deg = best.deg - 0.5; deg <= best.deg + 0.5 + 1e-9; deg += 0.1) {
+      const s = profileScore(pts, deg * Math.PI / 180, span);
+      if (s > best.score) best = { deg, score: s };
+    }
+    const sorted = scores.slice().sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1] || 1;
+    const prominence = best.score / median;
+    /* A curled page gives a flat score curve; rotating on that noise makes
+       things worse, so leave it alone and let the user use the slider. */
+    const applied = prominence >= (o.minProminence === undefined ? 1.05 : o.minProminence)
+                    && Math.abs(best.deg) > 0.15;
+    const deg = applied ? best.deg : 0;
+    return { radians: deg * Math.PI / 180, degrees: deg, prominence, applied,
+             bestDegrees: best.deg };
+  }
+
+  AM.deskew = { estimateSkew, profileScore, collectPoints };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — find the figures on a deskewed page.
+   Component shape, not stroke orientation: every transversal in this workbook is
+   oblique, and run-length in a fixed set of directions cannot see them. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+  const U = () => AM.util;
+
+  const DEFAULTS = {
+    glyphMaxHeight: 1.9,     // x text height
+    glyphMaxWidth: 6,
+    textLineMinWidth: 6,
+    ruleThin: 0.35,
+    ruleLong: 2.5,
+    bigMin: 2.2,
+    maxFill: 0.35,           // above this it is a solid blob, not line art
+    runFraction: 0.55,       // unbroken stroke / width, separates a rule from a text line
+    blobFill: 0.85,          // a solid filled region is never line art
+    textDilate: 0.5,         // x text height — horizontal, builds text lines
+    markAttach: 0.5,         // x text height — how far above or below a text line a
+                             //   loose mark can sit and still belong to it
+    markMaxHeight: 0.8,      // x text height — anything taller is a glyph, not a mark
+    textLineMaxHeight: 2.2,  // x text height
+    groupDilate: 0.6,        // x text height — tight, keeps the answer column out
+    mergeGap: 3.0,           // x text height — generous, rejoins split figures
+    strayTextDistance: 1.2,  // x text height
+    minDarkness: 0.42,       // rejects bleed-through from the reverse page
+    minBoxWidth: 3.0,
+    minBoxHeight: 1.5,
+    minBoxLongSide: 5.0,
+    maxPageFraction: 0.62,   // a "figure" bigger than this is a merge failure
+    pad: 0.04,
+    minPadPx: 6
+  };
+
+  function estimateTextHeight(comps, pageH) {
+    const hi = Math.max(12, pageH * 0.05);
+    const heights = [];
+    for (const c of comps) {
+      if (c.area < 4) continue;
+      if (c.h < 3 || c.h > hi) continue;
+      if (c.w > hi * 8) continue;
+      heights.push(c.h);
+    }
+    if (heights.length < 12) return Math.max(8, Math.round(pageH * 0.012));
+    /* 70th percentile, not the median: Thai vowel and tone marks are numerous
+       and tiny, and they drag a median well below the real glyph height. */
+    return U().clamp(Math.round(U().percentile(heights, 0.7)), 5, Math.round(pageH * 0.05));
+  }
+
+  function classify(c, th, o) {
+    const diag = Math.sqrt(c.w * c.w + c.h * c.h);
+    if (diag < 0.35 * th) return 'speck';
+    /* A solidly filled region — the chapter banner, the dark surround beyond the
+       page edge, a thumb over the lens — is never a drawing. Checked first,
+       because a full-height dark band is otherwise a perfect "vertical rule". */
+    if (c.fill > o.blobFill && c.area > 4 * th * th) return 'blob';
+    const thin = o.ruleThin * th, long = o.ruleLong * th;
+    if ((c.h <= thin && c.w >= long) || (c.w <= thin && c.h >= long)) return 'rule';
+    if (c.h >= o.bigMin * th && c.w >= o.bigMin * th && c.fill <= o.maxFill) return 'big';
+    /* Wide and flat: either a line of text, or a drawn line whose arrowheads or
+       tick marks have made its bounding box several pixels tall. The drawn line
+       is one unbroken run; text is broken between glyphs. */
+    if (c.w > o.textLineMinWidth * th && c.h <= o.glyphMaxHeight * th) {
+      return (c.maxRunH || 0) >= o.runFraction * c.w && c.fill <= 0.6 ? 'rule' : 'textline';
+    }
+    if (c.h > o.textLineMinWidth * th && c.w <= o.glyphMaxHeight * th) {
+      return (c.maxRunV || 0) >= o.runFraction * c.h && c.fill <= 0.6 ? 'rule' : 'other';
+    }
+    if (c.h <= o.glyphMaxHeight * th && c.w <= o.glyphMaxWidth * th) return 'glyph';
+    return 'other';
+  }
+
+  const isSeed = k => k === 'rule' || k === 'big';
+
+  function groupsOf(labels, groupLabels, comps) {
+    let maxId = 0;
+    for (const c of comps) if (c.id > maxId) maxId = c.id;
+    const wanted = new Uint8Array(maxId + 1);
+    for (const c of comps) wanted[c.id] = 1;
+    const compToGroup = new Int32Array(maxId + 1).fill(-1);
+    for (let i = 0; i < labels.length; i++) {
+      const c = labels[i];
+      if (c < 0 || !wanted[c]) continue;
+      if (compToGroup[c] === -1) compToGroup[c] = groupLabels[i];
+    }
+    const map = new Map();
+    for (const c of comps) {
+      const g = compToGroup[c.id];
+      if (g < 0) continue;
+      if (!map.has(g)) map.set(g, []);
+      map.get(g).push(c);
+    }
+    return map;
+  }
+
+  /* A line of running text always separates two questions and never appears
+     inside one figure, so it is a reliable "do not merge across this" marker.
+     Without it, any gap threshold generous enough to rejoin the five separate
+     lines of a ladder figure also welds consecutive questions together. */
+  function textLineBetween(a, b, textRects) {
+    if (!textRects || !textRects.length) return false;
+    const top = a.y < b.y ? a : b, bottom = a.y < b.y ? b : a;
+    const bandTop = top.y + top.h, bandBottom = bottom.y;
+    if (bandBottom <= bandTop) return false;
+    const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x + a.w, b.x + b.w);
+    for (const r of textRects) {
+      if (r.y + r.h <= bandTop + 2 || r.y >= bandBottom - 2) continue;
+      if (r.x + r.w <= x0 || r.x >= x1) continue;
+      return true;
+    }
+    return false;
+  }
+
+  function mergeBoxes(boxes, gap, textRects) {
+    let changed = true;
+    let list = boxes.slice();
+    while (changed) {
+      changed = false;
+      outer:
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          if (textLineBetween(list[i].rect, list[j].rect, textRects)) continue;
+          if (U().rectGap(list[i].rect, list[j].rect) <= gap) {
+            const merged = {
+              rect: U().unionRect(list[i].rect, list[j].rect),
+              area: list[i].area + list[j].area,
+              darkSum: list[i].darkSum + list[j].darkSum
+            };
+            list.splice(j, 1);
+            list.splice(i, 1, merged);
+            changed = true;
+            break outer;
+          }
+        }
+      }
+    }
+    return list;
+  }
+
+  /* Padding makes a figure breathe, but padding that reaches into the line of
+     text above or below drags the tops of glyphs into the exported PNG. Give
+     each side only as much room as there is before the next line of text. */
+  function padAllowance(raw, textRects, pad) {
+    const a = { top: pad, bottom: pad, left: pad, right: pad };
+    if (!textRects) return a;
+    for (const t of textRects) {
+      const overlapsX = t.x < raw.x + raw.w && raw.x < t.x + t.w;
+      const overlapsY = t.y < raw.y + raw.h && raw.y < t.y + t.h;
+      if (overlapsX) {
+        if (t.y + t.h <= raw.y) a.top = Math.min(a.top, Math.max(0, raw.y - (t.y + t.h) - 1));
+        if (t.y >= raw.y + raw.h) a.bottom = Math.min(a.bottom, Math.max(0, t.y - (raw.y + raw.h) - 1));
+      }
+      if (overlapsY) {
+        if (t.x + t.w <= raw.x) a.left = Math.min(a.left, Math.max(0, raw.x - (t.x + t.w) - 1));
+        if (t.x >= raw.x + raw.w) a.right = Math.min(a.right, Math.max(0, t.x - (raw.x + raw.w) - 1));
+      }
+    }
+    return a;
+  }
+
+  function readingOrder(boxes) {
+    const sorted = boxes.slice().sort((a, b) => a.y - b.y);
+    const out = [];
+    while (sorted.length) {
+      const first = sorted.shift();
+      const band = [first];
+      const bottom = first.y + first.h;
+      for (let i = 0; i < sorted.length;) {
+        const b = sorted[i];
+        const overlap = Math.min(bottom, b.y + b.h) - Math.max(first.y, b.y);
+        if (overlap > 0.5 * Math.min(first.h, b.h)) { band.push(b); sorted.splice(i, 1); }
+        else i++;
+      }
+      band.sort((a, b) => a.x - b.x);
+      out.push.apply(out, band);
+    }
+    return out;
+  }
+
+  /* Find whole lines of running text and take them out of play.
+     Excluding components already classified as `textline` is not enough: a line
+     of text is several hundred separate glyph components, and the figure
+     grouping happily swallows them one by one. So chain glyphs horizontally
+     first, and drop any chain that is line-of-text shaped and contains no
+     drawn stroke. */
+  function findTextComponents(mask, w, h, labels, comps, th, o) {
+    const img = AM.image;
+    const rH = Math.max(1, Math.round(o.textDilate * th));
+    /* Horizontal only. Dilating vertically far enough to catch Thai vowel and
+       tone marks also welds neighbouring lines together whenever the leading is
+       tight, and a chain two lines tall stops looking like text at all. */
+    const chained = img.morphXY(mask, w, h, rH, 0, 1);
+    const chains = img.connectedComponents(chained, w, h, null);
+    const groups = groupsOf(labels, chains.labels, comps);
+    let maxId = 0;
+    for (const c of comps) if (c.id > maxId) maxId = c.id;
+    const isText = new Uint8Array(maxId + 1);
+    const rects = [];
+    for (const members of groups.values()) {
+      let rect = members[0].rect;
+      let hasStroke = false;
+      for (const c of members) {
+        rect = U().unionRect(rect, c.rect);
+        if (isSeed(c.kind)) hasStroke = true;
+      }
+      if (hasStroke) continue;
+      if (rect.w > o.textLineMinWidth * th && rect.h <= o.textLineMaxHeight * th) {
+        for (const c of members) isText[c.id] = 1;
+        rects.push(rect);
+      }
+    }
+
+    /* Now pick up the marks that ride above and below a line — Thai sara and
+       tone marks, which are separate components and are never reached by
+       horizontal chaining. Bounded to small components, so unlike a vertical
+       dilation this can never swallow the next line. */
+    const attach = o.markAttach * th, maxH = o.markMaxHeight * th;
+    const loose = comps.filter(c => !isText[c.id] && c.h <= maxH && c.w <= 2 * th);
+    for (let i = 0; i < rects.length; i++) {
+      const t = rects[i];
+      for (const m of loose) {
+        if (isText[m.id]) continue;
+        if (m.x1 < t.x || m.x0 > t.x + t.w) continue;
+        const above = t.y - (m.y0 + m.h);
+        const below = m.y0 - (t.y + t.h);
+        if (Math.max(above, below) > attach) continue;
+        isText[m.id] = 1;
+        rects[i] = U().unionRect(t, m.rect);
+      }
+    }
+    return { isText, rects };
+  }
+
+  /* gray: flattened, deskewed. mask: binarised, deskewed. Same dimensions. */
+  function detectFigures(gray, mask, w, h, options) {
+    const o = Object.assign({}, DEFAULTS, options || {});
+    const img = AM.image;
+    const { labels, comps } = img.connectedComponents(mask, w, h, gray);
+    const th = o.textHeight || estimateTextHeight(comps, h);
+    for (const c of comps) c.kind = classify(c, th, o);
+
+    const text = findTextComponents(mask, w, h, labels, comps, th, o);
+    const isText = text.isText;
+    for (const c of comps) if (isText[c.id]) c.isText = true;
+    const figureMask = new Uint8Array(w * h);
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i] && labels[i] >= 0 && !isText[labels[i]]) figureMask[i] = 1;
+    }
+
+    const dil = img.dilateMask(figureMask, w, h, Math.max(1, Math.round(o.groupDilate * th)));
+    const groupCC = img.connectedComponents(dil, w, h, null);
+    const groups = groupsOf(labels, groupCC.labels, comps.filter(c => !c.isText));
+
+    const candidates = [];
+    for (const members of groups.values()) {
+      const seeds = members.filter(c => isSeed(c.kind));
+      if (!seeds.length) continue;
+      let seedRect = seeds[0].rect;
+      for (const s of seeds) seedRect = U().unionRect(seedRect, s.rect);
+
+      let rect = seedRect, area = 0, darkSum = 0;
+      for (const c of members) {
+        if (c.kind === 'textline' || c.isText) continue;
+        rect = U().unionRect(rect, c.rect);
+        area += c.area;
+        darkSum += c.darkSum;
+      }
+      candidates.push({ rect, area, darkSum });
+    }
+
+    const merged = mergeBoxes(candidates, o.mergeGap * th, text.rects);
+
+    const pageArea = w * h;
+    const kept = [];
+    const rejected = [];
+    for (const c of merged) {
+      const r = c.rect;
+      const darkness = c.area ? c.darkSum / c.area / 255 : 0;
+      const reason =
+        (r.w < o.minBoxWidth * th || r.h < o.minBoxHeight * th) ? 'too small' :
+        (Math.max(r.w, r.h) < o.minBoxLongSide * th) ? 'too small' :
+        (darkness < o.minDarkness) ? 'too faint (bleed-through)' :
+        (c.area / (r.w * r.h) > 0.5) ? 'solid blob' :
+        (r.w * r.h > o.maxPageFraction * pageArea) ? 'covers the page' : null;
+      if (reason) { rejected.push({ rect: r, reason, darkness }); continue; }
+      const pad = Math.max(o.minPadPx, Math.round(o.pad * Math.max(r.w, r.h)));
+      const a = padAllowance(r, text.rects, pad);
+      const x0 = Math.max(0, r.x - a.left), y0 = Math.max(0, r.y - a.top);
+      kept.push({
+        x: x0, y: y0,
+        w: Math.min(w, r.x + r.w + a.right) - x0,
+        h: Math.min(h, r.y + r.h + a.bottom) - y0,
+        darkness
+      });
+    }
+    return { boxes: readingOrder(kept), textHeight: th, comps, rejected,
+             textRects: text.rects, options: o };
+  }
+
+  AM.detect = { detectFigures, estimateTextHeight, classify, mergeBoxes, readingOrder,
+                findTextComponents, padAllowance, DEFAULTS };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — page analysis, start to finish.
+   The app and the test suite both call analyzePage(); there is no second
+   implementation that could drift from the tested one. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  const DEFAULTS = {
+    analysisWidth: 1600,   // long side used for analysis, not for export
+    bgRadius: 0,           // 0 = derive from image size
+    sauvolaWindow: 0,
+    sauvolaK: 0.25,
+    absMax: 200,
+    deskew: true,
+    maxSkewDegrees: 10,
+    forcedAngle: null      // radians, set by the manual rotation slider
+  };
+
+  function analyzePage(rgba, width, height, options) {
+    const o = Object.assign({}, DEFAULTS, options || {});
+    const img = AM.image;
+
+    let gray = img.toGray(rgba, width, height);
+    let w = width, h = height, scale = 1;
+    const longSide = Math.max(width, height);
+    if (o.analysisWidth && longSide > o.analysisWidth) {
+      const target = Math.round(width * (o.analysisWidth / longSide));
+      const ds = img.downscaleGray(gray, width, height, target);
+      gray = ds.data; w = ds.width; h = ds.height; scale = ds.width / width;
+    }
+
+    const flat = img.flattenImage(gray, w, h, o.bgRadius || 0);
+    const mask = img.sauvola(flat, w, h, {
+      window: o.sauvolaWindow || 0, k: o.sauvolaK, absMax: o.absMax
+    });
+
+    let skew = { radians: 0, degrees: 0, prominence: 0, applied: false };
+    if (o.forcedAngle !== null && o.forcedAngle !== undefined) {
+      skew = { radians: o.forcedAngle, degrees: o.forcedAngle * 180 / Math.PI,
+               prominence: 0, applied: o.forcedAngle !== 0, forced: true };
+    } else if (o.deskew) {
+      skew = AM.deskew.estimateSkew(mask, w, h, { maxDegrees: o.maxSkewDegrees });
+    }
+
+    let dFlat = { data: flat, width: w, height: h };
+    let dMask = { data: mask, width: w, height: h };
+    if (skew.radians) {
+      dFlat = img.rotateGray(flat, w, h, skew.radians, 255);
+      dMask = img.rotateMask(mask, w, h, skew.radians);
+    }
+
+    const det = AM.detect.detectFigures(dFlat.data, dMask.data, dFlat.width, dFlat.height, o.detect);
+
+    return {
+      scale,                       // analysis px per original px
+      analysis: { gray, flat, mask, width: w, height: h },
+      skew,
+      deskewed: { flat: dFlat.data, mask: dMask.data, width: dFlat.width, height: dFlat.height },
+      boxes: det.boxes,            // in deskewed ANALYSIS coordinates
+      textHeight: det.textHeight,
+      rejected: det.rejected,
+      textRects: det.textRects,
+      comps: det.comps
+    };
+  }
+
+  /* Deskewed analysis box -> deskewed full-resolution box. Both scales rotate
+     about their own centre and rotatedSize is linear in scale, so this is a
+     plain division. Asserted in test/run.js. */
+  function boxToFullRes(box, scale) {
+    return {
+      x: Math.round(box.x / scale), y: Math.round(box.y / scale),
+      w: Math.round(box.w / scale), h: Math.round(box.h / scale)
+    };
+  }
+
+  AM.pipeline = { analyzePage, boxToFullRes, DEFAULTS };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — turn a crop of a photo into line art fit for a document.
+   This, not the cropping, is what the tool is actually for: a screenshot of a
+   page photo is grey, shadowed and skewed; this makes it black on white. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  const DEFAULTS = {
+    mode: 'gray',      // 'gray' | 'bw' | 'transparent'
+    black: 0.30,       // flattened value at or below this becomes solid black
+    white: 0.80,       // at or above this becomes paper white — also wipes bleed-through
+    bolder: false,     // thicken strokes by 1px, for figures that print small
+    padding: 0.03,     // fraction of the longer side
+    minPadding: 8
+  };
+
+  function cleanCrop(rgba, w, h, options) {
+    const o = Object.assign({}, DEFAULTS, options || {});
+    const img = AM.image;
+    let gray = img.toGray(rgba, w, h);
+
+    /* Local background, so a shadow falling across one corner of the crop does
+       not turn into a grey wash in the exported figure. */
+    const r = Math.max(6, Math.min(60, Math.round(Math.min(w, h) / 8)));
+    gray = img.flattenImage(gray, w, h, r);
+    if (o.bolder) gray = img.minFilter(gray, w, h, 1);
+    gray = img.levels(gray, Math.round(o.black * 255), Math.round(o.white * 255));
+    if (o.mode === 'bw') {
+      for (let i = 0; i < gray.length; i++) gray[i] = gray[i] < 128 ? 0 : 255;
+    }
+
+    const pad = Math.max(o.minPadding | 0, Math.round((o.padding || 0) * Math.max(w, h)));
+    const W = w + pad * 2, H = h + pad * 2;
+    const out = new Uint8ClampedArray(W * H * 4);
+    const transparent = o.mode === 'transparent';
+    if (!transparent) out.fill(255);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const p = (y * W + x) * 4;
+        const sx = x - pad, sy = y - pad;
+        const inside = sx >= 0 && sy >= 0 && sx < w && sy < h;
+        const v = inside ? gray[sy * w + sx] : 255;
+        if (transparent) {
+          out[p] = out[p + 1] = out[p + 2] = 0;
+          out[p + 3] = 255 - v;
+        } else {
+          out[p] = out[p + 1] = out[p + 2] = v;
+          out[p + 3] = 255;
+        }
+      }
+    }
+    return { data: out, width: W, height: H };
+  }
+
+  AM.clean = { cleanCrop, DEFAULTS };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — stamp a resolution into a PNG.
+   canvas.toBlob writes no pHYs chunk, so Word assumes 96 dpi and drops a
+   900px figure onto the page nine inches wide. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+  const SIG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+  function isPng(b) {
+    if (!b || b.length < 8) return false;
+    for (let i = 0; i < 8; i++) if (b[i] !== SIG[i]) return false;
+    return true;
+  }
+  const u32 = (b, i) => ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
+  const type = (b, i) => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+
+  function chunk(name, data) {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    for (let i = 0; i < 4; i++) out[4 + i] = name.charCodeAt(i);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, AM.util.crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  }
+
+  function setPngDpi(bytes, dpi) {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (!isPng(b) || !dpi) return b;
+    const ppu = Math.round(dpi / 0.0254);
+    const data = new Uint8Array(9);
+    const dv = new DataView(data.buffer);
+    dv.setUint32(0, ppu); dv.setUint32(4, ppu); data[8] = 1; // unit: metre
+    const phys = chunk('pHYs', data);
+
+    const parts = [b.subarray(0, 8)];
+    let i = 8, inserted = false;
+    while (i + 8 <= b.length) {
+      const len = u32(b, i), name = type(b, i + 4), end = i + 12 + len;
+      if (end > b.length) break;
+      if (name !== 'pHYs') parts.push(b.subarray(i, end));
+      if (name === 'IHDR') { parts.push(phys); inserted = true; }
+      i = end;
+    }
+    if (!inserted) return b;
+    let total = 0;
+    for (const p of parts) total += p.length;
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+  }
+
+  function getPngDpi(bytes) {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (!isPng(b)) return null;
+    let i = 8;
+    while (i + 8 <= b.length) {
+      const len = u32(b, i), name = type(b, i + 4);
+      if (name === 'pHYs') {
+        const unit = b[i + 8 + 8];
+        return unit === 1 ? u32(b, i + 8) * 0.0254 : null;
+      }
+      i += 12 + len;
+    }
+    return null;
+  }
+
+  AM.pngmeta = { setPngDpi, getPngDpi, isPng };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — minimal ZIP writer, stored (no compression).
+   PNG is already deflated; re-deflating it buys nothing and would pull in a
+   compressor. Verified against `unzip -t` in the test suite. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  function dosDateTime(date) {
+    const d = date || new Date();
+    const y = Math.max(1980, d.getFullYear());
+    return {
+      time: ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31),
+      date: (((y - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31)
+    };
+  }
+
+  function utf8(str) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(str);
+    return new Uint8Array(Buffer.from(str, 'utf8'));
+  }
+
+  function makeZip(entries, date) {
+    const stamp = dosDateTime(date);
+    const files = entries.map(e => {
+      const name = utf8(e.name);
+      const data = e.data instanceof Uint8Array ? e.data : new Uint8Array(e.data);
+      return { name, data, crc: AM.util.crc32(data) };
+    });
+
+    let size = 0;
+    for (const f of files) size += 30 + f.name.length + f.data.length + 46 + f.name.length;
+    size += 22;
+    const out = new Uint8Array(size);
+    const dv = new DataView(out.buffer);
+    let at = 0;
+    const offsets = [];
+
+    for (const f of files) {
+      offsets.push(at);
+      dv.setUint32(at, 0x04034b50, true);
+      dv.setUint16(at + 4, 20, true);
+      dv.setUint16(at + 6, 0x0800, true);   // UTF-8 names
+      dv.setUint16(at + 8, 0, true);        // stored
+      dv.setUint16(at + 10, stamp.time, true);
+      dv.setUint16(at + 12, stamp.date, true);
+      dv.setUint32(at + 14, f.crc, true);
+      dv.setUint32(at + 18, f.data.length, true);
+      dv.setUint32(at + 22, f.data.length, true);
+      dv.setUint16(at + 26, f.name.length, true);
+      dv.setUint16(at + 28, 0, true);
+      at += 30;
+      out.set(f.name, at); at += f.name.length;
+      out.set(f.data, at); at += f.data.length;
+    }
+
+    const dirStart = at;
+    files.forEach((f, i) => {
+      dv.setUint32(at, 0x02014b50, true);
+      dv.setUint16(at + 4, 20, true);
+      dv.setUint16(at + 6, 20, true);
+      dv.setUint16(at + 8, 0x0800, true);
+      dv.setUint16(at + 10, 0, true);
+      dv.setUint16(at + 12, stamp.time, true);
+      dv.setUint16(at + 14, stamp.date, true);
+      dv.setUint32(at + 16, f.crc, true);
+      dv.setUint32(at + 20, f.data.length, true);
+      dv.setUint32(at + 24, f.data.length, true);
+      dv.setUint16(at + 28, f.name.length, true);
+      dv.setUint16(at + 30, 0, true);
+      dv.setUint16(at + 32, 0, true);
+      dv.setUint16(at + 34, 0, true);
+      dv.setUint16(at + 36, 0, true);
+      dv.setUint32(at + 38, 0, true);
+      dv.setUint32(at + 42, offsets[i], true);
+      at += 46;
+      out.set(f.name, at); at += f.name.length;
+    });
+
+    dv.setUint32(at, 0x06054b50, true);
+    dv.setUint16(at + 4, 0, true);
+    dv.setUint16(at + 6, 0, true);
+    dv.setUint16(at + 8, files.length, true);
+    dv.setUint16(at + 10, files.length, true);
+    dv.setUint32(at + 12, at - dirStart, true);
+    dv.setUint32(at + 16, dirStart, true);
+    dv.setUint16(at + 20, 0, true);
+    return out;
+  }
+
+  AM.zip = { makeZip };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — synthetic workbook page.
+   Doubles as the app's "Load demo page" and as the regression fixture. It is
+   deliberately built out of the cases that broke earlier designs: oblique
+   transversals, figures made of disconnected strokes, an answer column close to
+   the figure, labels sitting on the strokes, bleed-through, a dark page edge,
+   an illumination gradient and a few degrees of skew. */
+(function (root) {
+  'use strict';
+  const AM = root.AM || (root.AM = {});
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function Canvas(w, h) {
+    this.w = w; this.h = h;
+    this.g = new Uint8Array(w * h).fill(255);
+  }
+  Canvas.prototype.blend = function (x, y, a, ink) {
+    if (x < 0 || y < 0 || x >= this.w || y >= this.h || a <= 0) return;
+    const i = y * this.w + x;
+    this.g[i] = Math.min(this.g[i], Math.round(this.g[i] * (1 - a) + ink * a));
+    if (this.track && a > 0.25 && ink < 160) {
+      const t = this.track;
+      if (x < t.x0) t.x0 = x; if (y < t.y0) t.y0 = y;
+      if (x > t.x1) t.x1 = x; if (y > t.y1) t.y1 = y;
+    }
+  };
+  /* Ground truth is the exact extent of the ink a figure laid down, so the
+     tests measure the detector rather than an arbitrary margin. */
+  Canvas.prototype.beginTrack = function () { this.track = { x0: 1e9, y0: 1e9, x1: -1, y1: -1 }; };
+  Canvas.prototype.endTrack = function () {
+    const t = this.track; this.track = null;
+    return { x: t.x0, y: t.y0, w: t.x1 - t.x0 + 1, h: t.y1 - t.y0 + 1 };
+  };
+  Canvas.prototype.line = function (x0, y0, x1, y1, width, ink) {
+    const hw = (width || 2) / 2;
+    const k = ink === undefined ? 20 : ink;
+    const minX = Math.floor(Math.min(x0, x1) - hw - 1), maxX = Math.ceil(Math.max(x0, x1) + hw + 1);
+    const minY = Math.floor(Math.min(y0, y1) - hw - 1), maxY = Math.ceil(Math.max(y0, y1) + hw + 1);
+    const dx = x1 - x0, dy = y1 - y0, len2 = dx * dx + dy * dy || 1;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        let t = ((x - x0) * dx + (y - y0) * dy) / len2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = x0 + t * dx - x, py = y0 + t * dy - y;
+        const d = Math.sqrt(px * px + py * py);
+        this.blend(x, y, Math.max(0, Math.min(1, hw + 0.5 - d)), k);
+      }
+    }
+  };
+  Canvas.prototype.rect = function (x, y, w, h, ink) {
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) this.blend(xx, yy, 1, ink);
+  };
+  Canvas.prototype.frame = function (x, y, w, h, t, ink) {
+    this.line(x, y, x + w, y, t, ink); this.line(x, y + h, x + w, y + h, t, ink);
+    this.line(x, y, x, y + h, t, ink); this.line(x + w, y, x + w, y + h, t, ink);
+  };
+
+  /* A row of glyph-shaped marks with occasional marks above the body, which is
+     what makes the text-height estimator's job realistic. */
+  function textRun(cv, x, y, width, th, rnd, ink) {
+    let cx = x;
+    const stroke = Math.max(1.5, th * 0.11);
+    while (cx < x + width) {
+      const gw = th * (0.45 + rnd() * 0.35);
+      if (cx + gw > x + width) break;
+      const n = 2 + (rnd() * 2 | 0);
+      for (let i = 0; i < n; i++) {
+        const gx = cx + gw * (i / n) + gw * 0.1;
+        if (rnd() < 0.55) cv.line(gx, y, gx, y + th, stroke, ink);
+        else cv.line(gx, y + th * 0.45, gx + gw * 0.55, y + th * (rnd() < 0.5 ? 0.1 : 0.95), stroke, ink);
+      }
+      if (rnd() < 0.3) cv.line(cx + gw * 0.3, y - th * 0.42, cx + gw * 0.55, y - th * 0.42, stroke, ink);
+      cx += gw + th * (0.16 + rnd() * 0.14);
+    }
+  }
+
+  function label(cv, x, y, chars, th, rnd, ink) {
+    textRun(cv, x, y, chars * th * 0.62, th, rnd, ink);
+  }
+
+  /* Each figure returns the ground-truth box of everything it drew. */
+  const FIGURES = {
+    /* Two parallels cut by an oblique transversal, with angle labels on it. */
+    transversal(cv, x, y, s, th, rnd, ink) {
+      const w = s * 2.2, h = s * 1.3;
+      cv.line(x, y + h * 0.15, x + w, y + h * 0.15, 2.4, ink);
+      cv.line(x, y + h * 0.85, x + w, y + h * 0.85, 2.4, ink);
+      const ang = 62 * Math.PI / 180;
+      const cx = x + w * 0.45, len = h * 0.95;
+      cv.line(cx - Math.cos(ang) * len, y + h * 0.15 - Math.sin(ang) * 0 - h * 0.12,
+              cx + Math.cos(ang) * len, y + h * 0.85 + h * 0.12, 2.4, ink);
+      label(cv, x + w * 0.52, y + h * 0.19, 3, th * 0.8, rnd, ink);
+      label(cv, x + w * 0.3, y + h * 0.66, 3, th * 0.8, rnd, ink);
+      label(cv, x - th * 0.1, y + h * 0.15 - th * 1.1, 1, th * 0.8, rnd, ink);
+    },
+    /* Triangle with an internal parallel segment; labels inside the figure. */
+    triangle(cv, x, y, s, th, rnd, ink) {
+      const w = s * 1.7, h = s * 1.35;
+      const ax = x + w * 0.42, ay = y;
+      cv.line(ax, ay, x, y + h, 2.4, ink);
+      cv.line(ax, ay, x + w, y + h, 2.4, ink);
+      cv.line(x, y + h, x + w, y + h, 2.4, ink);
+      cv.line(x + w * 0.19, y + h * 0.55, x + w * 0.69, y + h * 0.55, 2.4, ink);
+      label(cv, ax - th * 0.4, ay + th * 0.5, 2, th * 0.8, rnd, ink);
+      label(cv, x + w * 0.3, y + h * 0.6, 4, th * 0.8, rnd, ink);
+      label(cv, x + w * 0.12, y + h - th * 1.3, 3, th * 0.8, rnd, ink);
+    },
+    /* Five parallel lines that never touch each other. */
+    ladder(cv, x, y, s, th, rnd, ink) {
+      const w = s * 1.9, gap = s * 0.24;
+      for (let i = 0; i < 5; i++) {
+        cv.line(x, y + i * gap, x + w, y + i * gap, 2.4, ink);
+        cv.line(x + w * 0.42, y + i * gap - 4, x + w * 0.5, y + i * gap, 2, ink);
+        cv.line(x + w * 0.42, y + i * gap + 4, x + w * 0.5, y + i * gap, 2, ink);
+      }
+    },
+    /* Zig-zag between two rays, touching nothing, at 20 and 35 degrees. */
+    zigzag(cv, x, y, s, th, rnd, ink) {
+      const w = s * 2.0, h = s * 1.15;
+      cv.line(x, y, x + w, y, 2.4, ink);
+      cv.line(x, y + h, x + w, y + h, 2.4, ink);
+      const p = [[x + w * 0.22, y + h * 0.12], [x + w * 0.62, y + h * 0.40],
+                 [x + w * 0.30, y + h * 0.66], [x + w * 0.74, y + h * 0.88]];
+      for (let i = 0; i < p.length - 1; i++) cv.line(p[i][0], p[i][1], p[i + 1][0], p[i + 1][1], 2.4, ink);
+      label(cv, x + w * 0.26, y + h * 0.16, 3, th * 0.8, rnd, ink);
+    }
+  };
+
+  function makePage(opts) {
+    const o = Object.assign({
+      width: 1200, height: 1600, textHeight: 22, seed: 7, skewDegrees: 3,
+      shadow: true, noise: 6, ghost: true, darkEdge: true, header: true, choices: true
+    }, opts || {});
+    const rnd = mulberry32(o.seed);
+    const cv = new Canvas(o.width, o.height);
+    const th = o.textHeight;
+    const truth = [], choiceRects = [];
+    const margin = Math.round(o.width * 0.09);
+
+    if (o.header) {
+      cv.rect(margin + 40, 40, o.width - margin * 2 - 80, th * 2.6, 35);
+      cv.line(margin, 30, o.width - margin, 30, 1.5, 120);
+    }
+    if (o.darkEdge) {
+      /* The facing page and the dark surround beyond the book's edge. */
+      cv.rect(0, 0, 26, o.height, 60);
+      for (let y = 120; y < o.height - 120; y += th * 2.6) textRun(cv, 30, y, 22, th * 0.8, rnd, 90);
+    }
+
+    const kinds = ['transversal', 'triangle', 'ladder', 'zigzag'];
+    let y = 40 + th * 5;
+    const figX = margin + 40;
+    for (let q = 0; q < kinds.length; q++) {
+      textRun(cv, margin, y, o.width - margin * 2 - 120, th, rnd, 25);
+      y += th * 2.2;
+      const s = Math.min(230, (o.height - y) / 2.6);
+      cv.beginTrack();
+      FIGURES[kinds[q]](cv, figX, y, s, th, rnd, 25);
+      const box = cv.endTrack();
+      truth.push(box);
+      if (o.choices) {
+        /* 2.5 text heights to the right of the figure: close enough that a
+           sloppy grouping radius swallows it. */
+        const cx = box.x + box.w + th * 2.5;
+        for (let i = 0; i < 4; i++) {
+          const cy = box.y + th * 1.2 + i * th * 2.2;
+          textRun(cv, cx, cy, th * 4.2, th, rnd, 25);
+          choiceRects.push({ x: cx, y: cy - th * 0.5, w: th * 4.2, h: th * 1.6 });
+        }
+      }
+      y += box.h + th * 1.6;
+    }
+
+    if (o.ghost) {
+      /* Bleed-through: real line art, ~25% contrast, mirrored position. */
+      const gy = Math.min(o.height - 260, 220);
+      FIGURES.triangle(cv, o.width - margin - 250, gy, 150, th, mulberry32(3), 200);
+    }
+
+    const truthSource = truth.map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h }));
+    const choiceSource = choiceRects.map(b => ({ x: b.x, y: b.y, w: b.w, h: b.h }));
+
+    let g = cv.g, W = o.width, H = o.height;
+    if (o.skewDegrees) {
+      const r = AM.image.rotateGray(g, W, H, o.skewDegrees * Math.PI / 180, 245);
+      /* Ground truth follows the same centre-to-centre rotation. */
+      const rad = o.skewDegrees * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+      const map = (px, py) => {
+        const dx = px - W / 2, dy = py - H / 2;
+        return { x: cos * dx - sin * dy + r.width / 2, y: sin * dx + cos * dy + r.height / 2 };
+      };
+      const remap = box => {
+        const pts = [map(box.x, box.y), map(box.x + box.w, box.y),
+                     map(box.x, box.y + box.h), map(box.x + box.w, box.y + box.h)];
+        const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+        return { x: Math.min.apply(null, xs), y: Math.min.apply(null, ys),
+                 w: Math.max.apply(null, xs) - Math.min.apply(null, xs),
+                 h: Math.max.apply(null, ys) - Math.min.apply(null, ys) };
+      };
+      for (let i = 0; i < truth.length; i++) truth[i] = remap(truth[i]);
+      for (let i = 0; i < choiceRects.length; i++) choiceRects[i] = remap(choiceRects[i]);
+      g = r.data; W = r.width; H = r.height;
+    }
+
+    /* Also hand back the pre-rotation boxes: taking the axis-aligned bounds of
+       a rotated rectangle inflates it, and a test that rotates ground truth
+       twice measures its own arithmetic instead of the detector. */
+    const rgba = new Uint8ClampedArray(W * H * 4);
+    for (let yy = 0; yy < H; yy++) {
+      for (let xx = 0; xx < W; xx++) {
+        const i = yy * W + xx;
+        let v = g[i];
+        if (o.shadow) {
+          /* Corner shadow plus a soft gradient, like a phone photo of a book. */
+          const nx = xx / W, ny = yy / H;
+          const shade = 1 - 0.34 * Math.pow(Math.max(0, nx - 0.45) / 0.55, 1.6)
+                          - 0.20 * Math.pow(Math.max(0, ny - 0.55) / 0.45, 1.7)
+                          - 0.10 * (1 - ny);
+          v = v * Math.max(0.35, shade);
+        }
+        if (o.noise) v += (rnd() - 0.5) * o.noise;
+        const c = v < 0 ? 0 : v > 255 ? 255 : v | 0;
+        const p = i * 4;
+        rgba[p] = c; rgba[p + 1] = c; rgba[p + 2] = Math.min(255, c + 4); rgba[p + 3] = 255;
+      }
+    }
+    return { rgba, width: W, height: H, truth, choiceRects, textHeight: th,
+             truthSource, choiceSource, sourceWidth: o.width, sourceHeight: o.height,
+             skewRadians: (o.skewDegrees || 0) * Math.PI / 180 };
+  }
+
+  AM.synth = { makePage, FIGURES, mulberry32 };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* Angles Maker — UI. Everything happens locally: no network, no upload. */
+(function () {
+  'use strict';
+  const AM = globalThis.AM;
+  const $ = s => document.querySelector(s);
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+
+  const ANALYSIS_W = 1600;
+  let nextId = 1;
+
+  const state = {
+    pages: [],
+    activeId: null,
+    selected: null,
+    undo: [],
+    settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
+  };
+  /* Only ever one full-resolution deskewed page in memory: a 12 MP photo is
+     48 MB as pixels and caching a handful of them ends the session. */
+  let fullRes = null;
+
+  const active = () => state.pages.find(p => p.id === state.activeId) || null;
+
+  function toast(html, ms) {
+    const t = $('#toast');
+    t.innerHTML = html;
+    t.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { t.hidden = true; }, ms || 5000);
+  }
+  function status(msg) {
+    const s = $('#status');
+    if (!msg) { s.hidden = true; return; }
+    s.textContent = msg;
+    s.hidden = false;
+  }
+
+  /* ---------- loading ---------- */
+
+  function addFiles(files) {
+    /* Only PDFs are refused up front. A HEIC is offered to the decoder — Safari
+       reads them — and the decode failure path explains the fix if it cannot. */
+    const list = Array.from(files).filter(f => !/\.pdf$/i.test(f.name) || warn(f));
+    for (const file of list) {
+      state.pages.push({
+        id: nextId++, name: file.name.replace(/\.[^.]+$/, ''), file,
+        boxes: [], angle: 0, ready: false
+      });
+    }
+    if (!state.activeId && state.pages.length) state.activeId = state.pages[0].id;
+    renderPages();
+    processActive();
+  }
+  function warn(f) {
+    toast('<b>' + f.name + '</b> เป็นไฟล์ PDF ไม่ใช่ไฟล์รูป กรุณาบันทึกหน้านั้นเป็นไฟล์รูปก่อน', 9000);
+    return false;
+  }
+
+  function addDemo() {
+    /* Bigger than the analysis width on purpose, so the demo exercises the same
+       downscale-then-crop-at-full-resolution path a real photo takes. */
+    const page = AM.synth.makePage({ seed: 7, width: 2000, height: 2600, textHeight: 38 });
+    state.pages.push({
+      id: nextId++, name: 'demo-page', demo: page, boxes: [], angle: 0, ready: false
+    });
+    state.activeId = state.pages[state.pages.length - 1].id;
+    renderPages();
+    processActive();
+  }
+
+  async function sourceBitmap(page) {
+    if (page.demo) {
+      const c = el('canvas');
+      c.width = page.demo.width; c.height = page.demo.height;
+      c.getContext('2d').putImageData(
+        new ImageData(page.demo.rgba, page.demo.width, page.demo.height), 0, 0);
+      return c;
+    }
+    try {
+      return await createImageBitmap(page.file);
+    } catch (e) {
+      throw new Error('decode');
+    }
+  }
+
+  async function analyse(page, opts) {
+    const src = await sourceBitmap(page);
+    const sw = src.width, sh = src.height;
+    const scale = Math.min(1, ANALYSIS_W / Math.max(sw, sh));
+    const w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+    const c = el('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, 0, 0, w, h);
+    if (src.close) src.close();
+
+    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const res = AM.pipeline.analyzePage(rgba, w, h, Object.assign({
+      analysisWidth: 0,
+      forcedAngle: page.angleForced ? page.angle : null,
+      detect: page.textHeightOverride ? { textHeight: page.textHeightOverride } : null
+    }, opts || {}));
+
+    page.scale = w / sw;              // analysis px per original px
+    page.naturalWidth = sw;
+    page.angle = res.skew.radians;
+    page.autoTextHeight = res.textHeight;
+    page.deskewed = { gray: res.deskewed.flat, w: res.deskewed.width, h: res.deskewed.height };
+    page.textRects = res.textRects || [];
+    page.ready = true;
+    return res;
+  }
+
+  async function processActive(keepManual) {
+    const page = active();
+    if (!page) return;
+    status('กำลังอ่านหน้ากระดาษ…');
+    try {
+      const manual = keepManual ? page.boxes.filter(b => b.manual) : [];
+      const prev = page.deskewed;
+      const res = await analyse(page);
+      /* Manual boxes were drawn in the old deskewed frame; if the angle moved,
+         move them with it rather than leaving them behind. */
+      const moved = prev ? rotateBoxes(manual, page.angle - (page.lastAngle || 0),
+                                       prev.w, prev.h, page.deskewed.w, page.deskewed.h) : manual;
+      page.lastAngle = page.angle;
+      page.boxes = res.boxes.map(b => makeBox(b, false)).concat(moved);
+      sortBoxes(page);
+      page.thumb = makeThumb(page);
+    } catch (e) {
+      status(null);
+      if (e && e.message === 'decode') {
+        toast('เปิดไฟล์ <b>' + (page.file ? page.file.name : 'รูปนี้') +
+              '</b> ไม่ได้ ถ้าเป็นรูปจาก iPhone มักเป็นไฟล์ HEIC ให้แปลงเป็น JPG ก่อน ' +
+              'โดยเปิด Terminal แล้วพิมพ์<br>' +
+              '<code>sips -s format jpeg in.HEIC --out out.jpg</code>', 14000);
+      } else {
+        toast('อ่านหน้ากระดาษนี้ไม่สำเร็จ: ' + (e && e.message), 8000);
+      }
+      state.pages = state.pages.filter(p => p.id !== page.id);
+      state.activeId = state.pages.length ? state.pages[0].id : null;
+      renderPages(); renderAll();
+      return;
+    }
+    status(null);
+    syncControls();
+    renderPages();
+    renderAll();
+    if (!page.boxes.length) {
+      toast('ไม่พบรูปในหน้านี้ — ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการเพื่อเพิ่มเอง', 7000);
+    }
+  }
+
+  const makeBox = (b, manual) => ({
+    id: nextId++, x: b.x, y: b.y, w: b.w, h: b.h, label: b.label || '', manual: !!manual
+  });
+
+  function rotateBoxes(boxes, delta, ow, oh, nw, nh) {
+    if (!boxes.length) return boxes;
+    const cos = Math.cos(delta), sin = Math.sin(delta);
+    return boxes.map(b => {
+      const cx = b.x + b.w / 2 - ow / 2, cy = b.y + b.h / 2 - oh / 2;
+      const nx = cos * cx - sin * cy + nw / 2, ny = sin * cx + cos * cy + nh / 2;
+      return Object.assign({}, b, { x: nx - b.w / 2, y: ny - b.h / 2 });
+    });
+  }
+
+  function sortBoxes(page) {
+    page.boxes = AM.detect.readingOrder(page.boxes);
+  }
+
+  /* ---------- rendering ---------- */
+
+  function grayToCanvas(gray, w, h) {
+    const c = el('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').putImageData(new ImageData(AM.image.grayToRGBA(gray, w, h), w, h), 0, 0);
+    return c;
+  }
+
+  function makeThumb(page) {
+    const d = page.deskewed;
+    const c = el('canvas');
+    const s = 64 / d.h;
+    c.width = Math.max(1, Math.round(d.w * s)); c.height = 64;
+    c.getContext('2d').drawImage(grayToCanvas(d.gray, d.w, d.h), 0, 0, c.width, c.height);
+    return c.toDataURL('image/png');
+  }
+
+  function renderPages() {
+    const wrap = $('#pages');
+    wrap.innerHTML = '';
+    wrap.hidden = state.pages.length < 1;
+    state.pages.forEach((p, i) => {
+      const b = el('button', 'thumb' + (p.id === state.activeId ? ' active' : ''));
+      const img = el('img');
+      img.src = p.thumb || '';
+      img.alt = 'หน้า ' + (i + 1);
+      b.appendChild(img);
+      b.appendChild(el('span', 'badge', String(p.boxes.length)));
+      const x = el('span', 'x', '×');
+      x.title = 'เอาหน้านี้ออก';
+      x.onclick = ev => { ev.stopPropagation(); removePage(p.id); };
+      b.appendChild(x);
+      b.onclick = () => selectPage(p.id);
+      wrap.appendChild(b);
+    });
+  }
+
+  function removePage(id) {
+    state.pages = state.pages.filter(p => p.id !== id);
+    if (fullRes && fullRes.pageId === id) fullRes = null;
+    if (state.activeId === id) state.activeId = state.pages.length ? state.pages[0].id : null;
+    renderPages();
+    if (state.activeId && !active().ready) processActive(); else renderAll();
+  }
+
+  function selectPage(id) {
+    if (state.activeId === id) return;
+    state.activeId = id;
+    state.selected = null;
+    state.undo = [];
+    if (fullRes && fullRes.pageId !== id) fullRes = null;   // release 48 MB
+    renderPages();
+    if (!active().ready) processActive(); else { syncControls(); renderAll(); }
+  }
+
+  function renderAll() {
+    const page = active();
+    const has = !!(page && page.ready);
+    $('#drop').hidden = has;
+    $('#viewport').hidden = !has;
+    $('#side').hidden = !has;
+    if (!has) return;
+
+    const d = page.deskewed;
+    const canvas = $('#page-canvas');
+    canvas.width = d.w; canvas.height = d.h;
+    canvas.getContext('2d').putImageData(
+      new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
+
+    const vp = $('#viewport');
+    const availW = vp.clientWidth - 40, availH = vp.clientHeight - 40;
+    const width = Math.min(availW, availH * (d.w / d.h));
+    const wrap = $('#canvas-wrap');
+    wrap.style.width = Math.max(120, width) + 'px';
+    renderBoxes();
+    renderList();
+  }
+
+  function renderBoxes() {
+    const page = active();
+    const ov = $('#overlay');
+    ov.innerHTML = '';
+    const d = page.deskewed;
+    page.boxes.forEach((b, i) => {
+      const n = el('div', 'box' + (state.selected === b.id ? ' sel' : ''));
+      n.style.left = (100 * b.x / d.w) + '%';
+      n.style.top = (100 * b.y / d.h) + '%';
+      n.style.width = (100 * b.w / d.w) + '%';
+      n.style.height = (100 * b.h / d.h) + '%';
+      n.dataset.id = b.id;
+      n.appendChild(el('span', 'tag', nameFor(page, b, i)));
+      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(k => {
+        const h = el('div', 'h ' + k);
+        h.dataset.handle = k;
+        n.appendChild(h);
+      });
+      ov.appendChild(n);
+    });
+  }
+
+  /* Numbering runs across every loaded page, so three photos of one exercise
+     give a single q01..q20 sequence. */
+  function figureIndex(page, box) {
+    let n = 0;
+    for (const p of state.pages) {
+      for (const b of p.boxes) {
+        n++;
+        if (b === box) return n;
+      }
+    }
+    return n;
+  }
+  function nameFor(page, box) {
+    if (box.label) return box.label;
+    return state.settings.prefix + String(figureIndex(page, box)).padStart(2, '0');
+  }
+
+  function renderList() {
+    const page = active();
+    const list = $('#fig-list');
+    list.innerHTML = '';
+    $('#fig-count').textContent = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    if (!page.boxes.length) {
+      list.appendChild(el('div', 'empty', 'ยังไม่พบรูปในหน้านี้ ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการ'));
+      return;
+    }
+    page.boxes.forEach(b => {
+      const row = el('div', 'fig' + (state.selected === b.id ? ' sel' : ''));
+      row.appendChild(previewCanvas(page, b));
+      const name = el('div', 'name');
+      const input = el('input');
+      input.value = nameFor(page, b);
+      input.onchange = () => {
+        b.label = AM.util.sanitizeName(input.value, '');
+        input.value = nameFor(page, b);
+        renderBoxes();
+      };
+      input.onclick = ev => ev.stopPropagation();
+      name.appendChild(input);
+      row.appendChild(name);
+      const dl = el('button', 'dl', '↓');
+      dl.title = 'ดาวน์โหลดรูปนี้';
+      dl.onclick = ev => { ev.stopPropagation(); exportOne(page, b); };
+      row.appendChild(dl);
+      row.onclick = () => { state.selected = b.id; renderBoxes(); renderList(); };
+      list.appendChild(row);
+    });
+  }
+
+  /* Previews come from the analysis-scale page, so nothing at full resolution
+     has to be decoded just to draw a 54px thumbnail. */
+  function previewCanvas(page, box) {
+    const d = page.deskewed;
+    const c = el('canvas');
+    c.width = 108; c.height = 76;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    const src = grayToCanvas(d.gray, d.w, d.h);
+    const s = Math.min(c.width / box.w, c.height / box.h);
+    const dw = box.w * s, dh = box.h * s;
+    ctx.drawImage(src, box.x, box.y, box.w, box.h,
+                  (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+    return c;
+  }
+
+  /* ---------- editing ---------- */
+
+  function pushUndo() {
+    const page = active();
+    if (!page) return;
+    state.undo.push(JSON.stringify(page.boxes));
+    if (state.undo.length > 60) state.undo.shift();
+  }
+  function undo() {
+    const page = active();
+    if (!page || !state.undo.length) return;
+    page.boxes = JSON.parse(state.undo.pop());
+    renderBoxes(); renderList(); renderPages();
+  }
+
+  function overlayPoint(ev) {
+    const page = active(), d = page.deskewed;
+    const r = $('#overlay').getBoundingClientRect();
+    return {
+      x: (ev.clientX - r.left) / r.width * d.w,
+      y: (ev.clientY - r.top) / r.height * d.h,
+      scale: d.w / r.width
+    };
+  }
+
+  function initEditing() {
+    const ov = $('#overlay');
+    ov.addEventListener('pointerdown', ev => {
+      const page = active();
+      if (!page) return;
+      const d = page.deskewed;
+      const start = overlayPoint(ev);
+      const boxNode = ev.target.closest('.box');
+      const handle = ev.target.dataset ? ev.target.dataset.handle : null;
+      ov.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+      pushUndo();
+
+      let box, mode;
+      if (boxNode) {
+        box = page.boxes.find(b => b.id === +boxNode.dataset.id);
+        mode = handle || 'move';
+        state.selected = box.id;
+      } else {
+        box = makeBox({ x: start.x, y: start.y, w: 1, h: 1 }, true);
+        page.boxes.push(box);
+        mode = 'se';
+        state.selected = box.id;
+      }
+      const o = { x: box.x, y: box.y, w: box.w, h: box.h };
+      renderBoxes(); renderList();
+
+      const move = e2 => {
+        const p = overlayPoint(e2);
+        const dx = p.x - start.x, dy = p.y - start.y;
+        if (mode === 'move') {
+          box.x = o.x + dx; box.y = o.y + dy;
+        } else {
+          let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
+          if (mode.includes('w')) x0 = o.x + dx;
+          if (mode.includes('e')) x1 = o.x + o.w + dx;
+          if (mode.includes('n')) y0 = o.y + dy;
+          if (mode.includes('s')) y1 = o.y + o.h + dy;
+          box.x = Math.min(x0, x1); box.y = Math.min(y0, y1);
+          box.w = Math.abs(x1 - x0); box.h = Math.abs(y1 - y0);
+        }
+        box.x = AM.util.clamp(box.x, 0, d.w - 4);
+        box.y = AM.util.clamp(box.y, 0, d.h - 4);
+        box.w = AM.util.clamp(box.w, 4, d.w - box.x);
+        box.h = AM.util.clamp(box.h, 4, d.h - box.y);
+        box.manual = true;
+        renderBoxes();
+      };
+      const up = () => {
+        ov.removeEventListener('pointermove', move);
+        ov.removeEventListener('pointerup', up);
+        if (box.w < 8 || box.h < 8) {
+          page.boxes = page.boxes.filter(b => b !== box);
+          state.undo.pop();
+        }
+        sortBoxes(page);
+        renderBoxes(); renderList(); renderPages();
+      };
+      ov.addEventListener('pointermove', move);
+      ov.addEventListener('pointerup', up);
+    });
+
+    document.addEventListener('keydown', ev => {
+      const page = active();
+      if (!page) return;
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+      const box = page.boxes.find(b => b.id === state.selected);
+      if ((ev.key === 'Backspace' || ev.key === 'Delete') && box) {
+        ev.preventDefault(); pushUndo();
+        page.boxes = page.boxes.filter(b => b !== box);
+        state.selected = null;
+        renderBoxes(); renderList(); renderPages();
+      } else if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z') {
+        ev.preventDefault(); undo();
+      } else if (box && ev.key.startsWith('Arrow')) {
+        ev.preventDefault(); pushUndo();
+        const step = ev.shiftKey ? 10 : 2;
+        if (ev.key === 'ArrowLeft') box.x -= step;
+        if (ev.key === 'ArrowRight') box.x += step;
+        if (ev.key === 'ArrowUp') box.y -= step;
+        if (ev.key === 'ArrowDown') box.y += step;
+        box.manual = true;
+        renderBoxes();
+      } else if (ev.key === 'Escape') {
+        state.selected = null; renderBoxes(); renderList();
+      }
+    });
+  }
+
+  /* ---------- export ---------- */
+
+  async function ensureFullRes(page) {
+    if (fullRes && fullRes.pageId === page.id && fullRes.angle === page.angle) return fullRes;
+    fullRes = null;
+    const src = await sourceBitmap(page);
+    const size = AM.util.rotatedSize(src.width, src.height, page.angle);
+    const c = el('canvas');
+    c.width = size.w; c.height = size.h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size.w, size.h);
+    /* Same centre-to-centre convention as image.rotateGray, which is what makes
+       box / scale a valid crop rectangle here. */
+    ctx.translate(size.w / 2, size.h / 2);
+    ctx.rotate(page.angle);
+    ctx.drawImage(src, -src.width / 2, -src.height / 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (src.close) src.close();
+    fullRes = { pageId: page.id, angle: page.angle, canvas: c, ctx, w: size.w, h: size.h };
+    return fullRes;
+  }
+
+  async function renderFigure(page, box) {
+    const fr = await ensureFullRes(page);
+    const b = AM.pipeline.boxToFullRes(box, page.scale);
+    const x = AM.util.clamp(b.x, 0, fr.w - 2), y = AM.util.clamp(b.y, 0, fr.h - 2);
+    const w = Math.max(2, Math.min(b.w, fr.w - x)), h = Math.max(2, Math.min(b.h, fr.h - y));
+    const img = fr.ctx.getImageData(x, y, w, h);
+    const s = state.settings;
+    const cleaned = AM.clean.cleanCrop(img.data, w, h, { mode: s.mode, bolder: s.bolder });
+
+    const src = el('canvas');
+    src.width = cleaned.width; src.height = cleaned.height;
+    src.getContext('2d').putImageData(
+      new ImageData(cleaned.data, cleaned.width, cleaned.height), 0, 0);
+
+    let outW = cleaned.width, outH = cleaned.height;
+    if (s.width) {
+      outW = s.width;
+      outH = Math.max(1, Math.round(cleaned.height * (s.width / cleaned.width)));
+    }
+    const out = el('canvas');
+    out.width = outW; out.height = outH;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingQuality = 'high';
+    if (s.mode !== 'transparent') { octx.fillStyle = '#fff'; octx.fillRect(0, 0, outW, outH); }
+    octx.drawImage(src, 0, 0, outW, outH);
+
+    const blob = await new Promise(res => out.toBlob(res, 'image/png'));
+    const bytes = AM.pngmeta.setPngDpi(new Uint8Array(await blob.arrayBuffer()), s.dpi);
+    return bytes;
+  }
+
+  function saveBytes(bytes, filename) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+    const a = el('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  async function exportOne(page, box) {
+    status('กำลังบันทึก…');
+    try {
+      const bytes = await renderFigure(page, box);
+      saveBytes(bytes, AM.util.sanitizeName(nameFor(page, box), 'figure') + '.png');
+    } catch (e) {
+      toast('บันทึกรูปนี้ไม่สำเร็จ: ' + (e && e.message), 7000);
+    }
+    status(null);
+  }
+
+  async function exportZip() {
+    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    if (!total) { toast('ยังไม่มีรูปให้บันทึก', 4000); return; }
+    const entries = [];
+    const taken = new Set();
+    let done = 0;
+    for (const page of state.pages) {
+      if (!page.ready || !page.boxes.length) continue;
+      for (const box of page.boxes) {
+        status('กำลังบันทึกรูปที่ ' + (++done) + ' จาก ' + total + '…');
+        await new Promise(r => setTimeout(r, 0));   // let the status paint
+        try {
+          const bytes = await renderFigure(page, box);
+          const name = AM.util.uniqueName(
+            AM.util.sanitizeName(nameFor(page, box), 'figure') + '.png', taken);
+          entries.push({ name, data: bytes });
+        } catch (e) {
+          toast('ข้ามไปหนึ่งรูป: ' + (e && e.message), 6000);
+        }
+      }
+      if (fullRes && fullRes.pageId === page.id) fullRes = null;   // release between pages
+    }
+    status(null);
+    if (!entries.length) return;
+    saveBytes(AM.zip.makeZip(entries), (state.settings.prefix || 'figures') + '-รูปทั้งหมด.zip');
+  }
+
+  /* ---------- controls ---------- */
+
+  function syncControls() {
+    const page = active();
+    if (!page) return;
+    const deg = page.angle * 180 / Math.PI;
+    $('#in-angle').value = deg.toFixed(1);
+    $('#out-angle').textContent = deg.toFixed(1) + '°';
+    const th = page.textHeightOverride || 0;
+    $('#in-th').value = th;
+    $('#out-th').textContent = th ? th + ' พิกเซล'
+      : 'อัตโนมัติ (' + (page.autoTextHeight || 0) + ' พิกเซล)';
+  }
+
+  function initControls() {
+    $('#btn-add').onclick = $('#btn-add2').onclick = () => $('#file-input').click();
+    $('#file-input').onchange = ev => { addFiles(ev.target.files); ev.target.value = ''; };
+    $('#btn-demo').onclick = addDemo;
+    $('#btn-redetect').onclick = () => processActive(true);
+    $('#btn-clear').onclick = () => {
+      const page = active();
+      if (!page) return;
+      pushUndo();
+      page.boxes = [];
+      renderBoxes(); renderList(); renderPages();
+    };
+    $('#btn-zip').onclick = exportZip;
+
+    const angle = $('#in-angle');
+    angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
+    angle.onchange = () => {
+      const page = active();
+      if (!page) return;
+      page.angleForced = true;
+      page.angle = +angle.value * Math.PI / 180;
+      fullRes = null;
+      processActive(true);
+    };
+
+    const th = $('#in-th');
+    th.oninput = () => {
+      $('#out-th').textContent = +th.value ? th.value + ' พิกเซล'
+        : 'อัตโนมัติ (' + ((active() || {}).autoTextHeight || 0) + ' พิกเซล)';
+    };
+    th.onchange = () => {
+      const page = active();
+      if (!page) return;
+      page.textHeightOverride = +th.value || 0;
+      processActive(true);
+    };
+
+    $('#in-mode').onchange = ev => { state.settings.mode = ev.target.value; };
+    const width = $('#in-width');
+    const showWidth = () => {
+      $('#out-width').textContent = +width.value ? width.value + ' พิกเซล' : 'ขนาดเดิม';
+    };
+    width.oninput = () => { state.settings.width = +width.value; showWidth(); };
+    showWidth();
+    $('#in-bolder').onchange = ev => { state.settings.bolder = ev.target.checked; };
+    $('#in-prefix').oninput = ev => {
+      /* Strip only what a filesystem rejects. A \w class here would be ASCII-only
+         and would quietly delete every Thai character the user typed. */
+      state.settings.prefix = ev.target.value.replace(/[\/\\:*?"<>|]/g, '');
+      renderBoxes(); renderList();
+    };
+
+    let dragDepth = 0;
+    window.addEventListener('dragover', ev => ev.preventDefault());
+    window.addEventListener('dragenter', ev => {
+      ev.preventDefault(); dragDepth++; document.body.classList.add('dragging');
+    });
+    window.addEventListener('dragleave', () => {
+      if (--dragDepth <= 0) document.body.classList.remove('dragging');
+    });
+    window.addEventListener('drop', ev => {
+      ev.preventDefault(); dragDepth = 0;
+      document.body.classList.remove('dragging');
+      if (ev.dataTransfer && ev.dataTransfer.files.length) addFiles(ev.dataTransfer.files);
+    });
+    window.addEventListener('resize', () => { if (active() && active().ready) renderAll(); });
+  }
+
+  /* A small handle for scripting and for the test pass; the UI does not use it. */
+  AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor };
+
+  initControls();
+  initEditing();
+  if (/[?&]demo/.test(location.search)) addDemo();
+})();
+</script>
+</body>
+</html>

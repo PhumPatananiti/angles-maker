@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'">
+<title>Angles Maker — ตัดรูปมุมจากหน้าหนังสือ</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → ไฟล์ PNG แยกทีละรูป</span></div>
+  <div class="bar-actions">
+    <button id="btn-add" class="primary">เพิ่มรูปภาพ…</button>
+    <button id="btn-demo" class="ghost">หน้าตัวอย่าง</button>
+    <input id="file-input" type="file" accept="image/*" multiple hidden>
+  </div>
+</header>
+
+<div id="pages" class="pages" hidden></div>
+
+<main>
+  <section class="stage">
+    <div id="drop" class="drop">
+      <div class="drop-inner">
+        <h1>ลากรูปถ่ายหน้าหนังสือมาวางตรงนี้</h1>
+        <p>โปรแกรมจะหารูปเรขาคณิตทุกรูปในหน้านั้น ปรับให้ตรง ลบเงาและพื้นสีเทาออก
+           แล้วบันทึกเป็นไฟล์ PNG แยกทีละรูป พร้อมนำไปวางในข้อสอบ Word ได้ทันที</p>
+        <p>ไม่มีการอัปโหลดไฟล์ขึ้นอินเทอร์เน็ต ทุกอย่างทำงานอยู่ในเครื่องนี้ทั้งหมด
+           และใช้งานได้แม้ไม่ต่อเน็ต</p>
+        <button id="btn-add2" class="primary big">เลือกรูปภาพ…</button>
+        <p class="muted">รองรับไฟล์ JPG, PNG และ WebP — ไฟล์ HEIC จาก iPhone บางเบราว์เซอร์เปิดไม่ได้
+           ถ้าเปิดไม่ได้โปรแกรมจะบอกวิธีแปลงไฟล์ให้</p>
+      </div>
+    </div>
+    <div id="viewport" class="viewport" hidden>
+      <div id="canvas-wrap" class="canvas-wrap">
+        <canvas id="page-canvas"></canvas>
+        <div id="overlay" class="overlay"></div>
+      </div>
+    </div>
+    <div id="status" class="status" hidden></div>
+  </section>
+
+  <aside class="side" id="side" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>รูปที่ตัดได้</h2>
+        <span id="fig-count" class="pill">0</span>
+      </div>
+      <p class="hint">ลากบนหน้ากระดาษเพื่อเพิ่มกรอบใหม่ · ลากกรอบเพื่อย้าย · ลากขอบเพื่อปรับขนาด ·
+         กด <kbd>⌫</kbd> เพื่อลบ · กด <kbd>Ctrl</kbd>+<kbd>Z</kbd> (หรือ <kbd>⌘Z</kbd> บน Mac) เพื่อย้อนกลับ</p>
+      <div id="fig-list" class="fig-list"></div>
+      <div class="row">
+        <button id="btn-redetect" class="ghost">ค้นหาใหม่</button>
+        <button id="btn-clear" class="ghost">ลบกรอบทั้งหมด</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>หน้ากระดาษ</h2></div>
+      <label class="field">
+        <span>หมุนหน้ากระดาษ <output id="out-angle">0.0°</output></span>
+        <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
+        <small>ปกติโปรแกรมปรับให้ตรงเองอยู่แล้ว ปรับตรงนี้เฉพาะตอนที่หน้ายังเอียงอยู่</small>
+      </label>
+      <label class="field">
+        <span>ขนาดตัวหนังสือในหน้า <output id="out-th">อัตโนมัติ</output></span>
+        <input id="in-th" type="range" min="0" max="60" step="1" value="0">
+        <small>เพิ่มค่านี้ถ้าโปรแกรมจับเศษตัวหนังสือมาเป็นรูป
+               ลดค่าลงถ้ารูปเล็ก ๆ ถูกมองข้าม</small>
+      </label>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>ไฟล์ที่จะบันทึก</h2></div>
+      <label class="field">
+        <span>รูปแบบภาพ</span>
+        <select id="in-mode">
+          <option value="gray">โทนเทาสะอาด (แนะนำ)</option>
+          <option value="bw">ขาวดำล้วน</option>
+          <option value="transparent">พื้นหลังโปร่งใส</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>ความกว้าง <output id="out-width">900 พิกเซล</output></span>
+        <input id="in-width" type="range" min="0" max="2000" step="50" value="900">
+        <small>ตั้งเป็น 0 เพื่อใช้ขนาดเดิม ทุกไฟล์บันทึกที่ความละเอียด 300 dpi
+               ดังนั้น 900 พิกเซล จะกว้างประมาณ 3 นิ้วเมื่อวางใน Word</small>
+      </label>
+      <label class="check"><input id="in-bolder" type="checkbox"> ทำเส้นให้หนาขึ้น</label>
+      <label class="field">
+        <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
+        <input id="in-prefix" type="text" value="q" spellcheck="false">
+        <small>เช่น ตั้งเป็น q จะได้ q01.png, q02.png ไปเรื่อย ๆ ตามลำดับข้อ</small>
+      </label>
+      <div class="row">
+        <button id="btn-zip" class="primary">ดาวน์โหลดทั้งหมด (.zip)</button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/core/util.js"></script>
+<script src="js/core/image.js"></script>
+<script src="js/core/deskew.js"></script>
+<script src="js/core/detect.js"></script>
+<script src="js/core/pipeline.js"></script>
+<script src="js/core/clean.js"></script>
+<script src="js/core/pngmeta.js"></script>
+<script src="js/core/zip.js"></script>
+<script src="js/core/synth.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
