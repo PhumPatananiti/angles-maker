@@ -1,0 +1,21 @@
+# Render Blueprint.
+#
+# A static site, because that is genuinely all this is: one HTML file with the
+# CSS and JavaScript inlined, running entirely in the visitor's browser. There
+# is no server, no database and no runtime to keep awake — photos never leave
+# the machine they are dropped on, hosted or not.
+#
+# Deploy from the Render dashboard with New > Blueprint, and point it at this
+# repository. Render will grant itself access to the private repo as part of
+# that flow.
+services:
+  - name: angles-maker
+    type: web
+    runtime: static
+    buildCommand: node tools/bundle.js
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

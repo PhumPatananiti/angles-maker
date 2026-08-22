@@ -23,6 +23,13 @@ Then rebuild the single file after any edit:
 node tools/bundle.js
 ```
 
+## Hosting it
+
+`render.yaml` defines the site as a Render static site: build with `node tools/bundle.js`, publish
+`dist/`. In the Render dashboard choose **New > Blueprint** and point it at this repository. Hosting
+changes nothing about how the tool works — the page still does everything in the visitor's browser
+and still uploads no photographs anywhere.
+
 ## Using it
 
 1. **Add photos** — or drag them onto the window. JPG, PNG and WebP work.

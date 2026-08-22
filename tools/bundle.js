@@ -21,11 +21,14 @@ html = html.replace(/<script src="([^"]+)"><\/script>/g, (m, src) => {
 html = html.replace('<title>Angles Maker</title>',
   '<title>Angles Maker</title>\n<!-- single-file build; edit the sources and re-run tools/bundle.js -->');
 
-const out = path.join(root, 'dist', 'angles-maker.html');
-fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, html);
+const dir = path.join(root, 'dist');
+fs.mkdirSync(dir, { recursive: true });
+/* Two copies of the same bytes: index.html is what a web host serves at /, and
+   angles-maker.html is what someone right-clicks and saves to run offline. */
+fs.writeFileSync(path.join(dir, 'angles-maker.html'), html);
+fs.writeFileSync(path.join(dir, 'index.html'), html);
 const kb = (Buffer.byteLength(html) / 1024).toFixed(0);
-console.log('wrote dist/angles-maker.html (' + kb + ' KB, no external files)');
+console.log('wrote dist/index.html and dist/angles-maker.html (' + kb + ' KB each, no external files)');
 if (/(src|href)="(?!data:)[^"]+"/.test(html.replace(/<a [^>]*>/g, ''))) {
   console.warn('warning: a reference to an external file survived bundling');
 }
