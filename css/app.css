@@ -68,7 +68,35 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 main { flex: 1; display: flex; min-height: 0; }
 .stage { flex: 1; position: relative; background: var(--stage); overflow: hidden; }
-.viewport { position: absolute; inset: 0; overflow: auto; padding: 20px; }
+.workspace { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.page-view { flex: 0 0 34%; min-height: 160px; overflow: auto; padding: 14px;
+  display: flex; align-items: center; justify-content: center; }
+.gallery { flex: 1; overflow-y: auto; background: var(--bg); padding: 14px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;
+  align-content: start; }
+.gallery-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 30px 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.card.off { opacity: 0.5; }
+.card-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.card-name { font-weight: 650; flex: 1; }
+.card-state { font-size: 11.5px; color: var(--muted); background: var(--bg);
+  border-radius: 10px; padding: 1px 8px; }
+.card-state.done { color: var(--accent); background: var(--accent-soft); }
+.card-state.busy { color: #7a5b00; background: #f7edd0; }
+.card-body { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
+.card-body figure { margin: 0; border: 1px solid var(--line); border-radius: 7px; padding: 6px;
+  background: #fff; }
+.card-body figcaption { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.card-body img, .card-body canvas, .svg-holder svg { max-width: 100%; height: auto; display: block;
+  margin: 0 auto; }
+.svg-holder { touch-action: none; }
+.angles { margin: 8px 0 6px; display: flex; flex-direction: column; gap: 5px; }
+.angle-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.angle-at { color: var(--muted); min-width: 62px; }
+.angle-row input { flex: 1; padding: 4px 7px; }
+.angle-measured { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 46px;
+  text-align: right; }
+.box.off { opacity: 0.35; }
 .canvas-wrap { position: relative; margin: 0 auto; line-height: 0; }
 .canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
   box-shadow: 0 2px 18px #0006; border-radius: 2px; }

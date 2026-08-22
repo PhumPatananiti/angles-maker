@@ -32,47 +32,22 @@ and still uploads no photographs anywhere.
 
 ## Using it
 
-1. **Add photos** — or drag them onto the window. JPG, PNG and WebP work.
-   iPhone HEIC files do not; the app shows you the `sips` command to convert them.
-2. **Check the boxes.** Figures are found automatically. Drag on the page to add one that was
-   missed, drag a box to move it, drag its edges to resize, <kbd>⌫</kbd> to delete,
-   <kbd>⌘Z</kbd> to undo, arrow keys to nudge.
-3. **Set the output.** Clean grayscale (the default), pure black & white, or a transparent
-   background. *Bolder lines* helps thin pencil strokes survive printing.
-4. **Download** each figure, or all of them as a `.zip`.
+1. **Add photos** — or drag them onto the window.
+2. The page is straightened and cleaned, then **Gemini finds every angle figure on it**. You do not
+   crop anything.
+3. **Tick the figures you want** in the gallery, then press **อ่านมุมที่เลือก**. Each selected
+   figure is read into editable geometry — points, lines, parallel families, angle labels.
+4. **Customise.** Type a new value into any angle and the drawing follows: the constraint is solved
+   and the lines move, so the figure and its label can never disagree. Drag a point to reshape the
+   lines themselves. A symbolic label like `x + 50°` stops driving the geometry and is carried as
+   text.
+5. **Download SVG**, one figure or all of them, and insert into Word.
 
-Figures are numbered in reading order across every page you have loaded, so three photos of a
-20-question exercise give you `q01`–`q20` in one archive. Rename any of them in the list.
+Numbering follows the question numbers printed on the page when Gemini can read them, otherwise it
+runs in reading order across every page you have loaded.
 
-Each PNG is written at 300 dpi, so a 900 px figure lands about 3 inches wide in Word instead of the
-nine inches you would get from a plain screenshot.
-
-### If a page comes out wrong
-
-- **Bits of text are picked up as figures** — raise *Figure size*.
-- **Small figures are missed** — lower *Figure size*.
-- **The page is crooked** — nudge *Rotation*. Detection re-runs, and boxes you drew yourself move
-  with the page instead of being left behind.
-- **Nothing at all is found** — draw the boxes by hand. That path is meant to be used, not a
-  fallback: cropping, cleaning and naming are most of the value.
-
-## Reading figures with AI (optional)
-
-Paste a Gemini API key into the **อ่านรูปด้วย AI** panel and a cropped figure can be read into
-editable geometry — points, lines, parallel families and angle labels — then re-rendered as SVG.
-
-The key is held in `localStorage` in that browser. It is never committed, never reaches the server
-that hosts the page, and travels in the `x-goog-api-key` header rather than a URL. The app works
-completely without a key; this step is additive.
-
-Model: `gemini-3.6-flash`. The prompt asks it to report only what is drawn — no solving, no filling
-in unknown angles.
-
-**Every reading is cross-checked against itself.** The model returns both coordinates and label text,
-so the angle the drawing measures can be compared with the number printed on it. When they disagree
-by more than a few degrees the number was probably misread — 82 as 32 is the classic — and that
-angle's constraint is left switched off and reported, rather than the figure being bent to match a
-misreading. The comparison view puts the original crop beside the reconstruction so a person decides.
+If a figure is ever missed, tick **เพิ่มกรอบเองได้** and drag a rectangle over it by hand. That is
+an escape hatch, not a step in the flow.
 
 ## How it works
 

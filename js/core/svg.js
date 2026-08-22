@@ -157,8 +157,11 @@
         const pt = figure.points[id];
         if (pt.show === false) continue;
         const p = P(id);
-        out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' + o.pointRadius +
-                 '" fill="' + o.color + '"/>');
+        out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' +
+                 (o.interactive ? Math.max(o.pointRadius, 7) : o.pointRadius) +
+                 '" fill="' + o.color + '"' +
+                 (o.interactive ? ' data-point="' + esc(id) + '" class="pt"' +
+                                  ' fill-opacity="0.9" style="cursor:grab"' : '') + '/>');
         const label = pt.label === undefined ? id : pt.label;
         if (label) {
           /* Push the name away from the middle of the figure so it never lands

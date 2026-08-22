@@ -10,7 +10,7 @@
 </head>
 <body>
 <header class="bar">
-  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → ไฟล์ PNG แยกทีละรูป</span></div>
+  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → มุมที่แก้ไขค่าได้ → SVG สำหรับ Word</span></div>
   <div class="bar-actions">
     <button id="btn-add" class="primary">เพิ่มรูปภาพ…</button>
     <button id="btn-demo" class="ghost">หน้าตัวอย่าง</button>
@@ -25,39 +25,63 @@
     <div id="drop" class="drop">
       <div class="drop-inner">
         <h1>ลากรูปถ่ายหน้าหนังสือมาวางตรงนี้</h1>
-        <p>โปรแกรมจะหารูปเรขาคณิตทุกรูปในหน้านั้น ปรับให้ตรง ลบเงาและพื้นสีเทาออก
-           แล้วบันทึกเป็นไฟล์ PNG แยกทีละรูป พร้อมนำไปวางในข้อสอบ Word ได้ทันที</p>
-        <p>ไม่มีการอัปโหลดไฟล์ขึ้นอินเทอร์เน็ต ทุกอย่างทำงานอยู่ในเครื่องนี้ทั้งหมด
-           และใช้งานได้แม้ไม่ต่อเน็ต</p>
+        <p>โปรแกรมจะปรับหน้าให้ตรง ลบเงาออก แล้วให้ AI หารูปมุมทุกรูปในหน้านั้นเอง
+           คุณเพียงเลือกว่าจะใช้รูปไหน แก้ค่ามุมได้ตามต้องการ แล้วบันทึกเป็นไฟล์ SVG
+           ไปวางใน Word</p>
         <button id="btn-add2" class="primary big">เลือกรูปภาพ…</button>
-        <p class="muted">รองรับไฟล์ JPG, PNG และ WebP — ไฟล์ HEIC จาก iPhone บางเบราว์เซอร์เปิดไม่ได้
-           ถ้าเปิดไม่ได้โปรแกรมจะบอกวิธีแปลงไฟล์ให้</p>
+        <p class="muted">รองรับ JPG, PNG, WebP · ต้องใส่ Gemini API key หนึ่งครั้งก่อนใช้งาน</p>
       </div>
     </div>
-    <div id="viewport" class="viewport" hidden>
-      <div id="canvas-wrap" class="canvas-wrap">
-        <canvas id="page-canvas"></canvas>
-        <div id="overlay" class="overlay"></div>
+
+    <div id="workspace" class="workspace" hidden>
+      <div id="page-view" class="page-view">
+        <div id="canvas-wrap" class="canvas-wrap">
+          <canvas id="page-canvas"></canvas>
+          <div id="overlay" class="overlay"></div>
+        </div>
       </div>
+      <div id="gallery" class="gallery"></div>
     </div>
     <div id="status" class="status" hidden></div>
   </section>
 
   <aside class="side" id="side" hidden>
+    <div class="panel" id="ai-panel">
+      <div class="panel-head"><h2>Gemini</h2><span id="ai-state" class="pill">ยังไม่ใส่คีย์</span></div>
+      <div id="key-unset">
+        <label class="field">
+          <span>API key</span>
+          <input id="in-key" type="password" spellcheck="false" autocomplete="off" placeholder="AIza…">
+          <small>ขอคีย์ฟรีที่ aistudio.google.com/apikey — เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น
+                 ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
+        </label>
+        <div class="row"><button id="btn-key-save" class="primary">บันทึกคีย์</button></div>
+      </div>
+      <div id="key-set" hidden>
+        <p class="hint">ใช้คีย์ <code id="key-mask"></code></p>
+        <div class="row">
+          <button id="btn-find" class="ghost">ค้นหารูปใหม่</button>
+          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-head">
-        <h2>รูปที่ตัดได้</h2>
-        <span id="fig-count" class="pill">0</span>
+        <h2>รูปที่พบ</h2><span id="fig-count" class="pill">0</span>
       </div>
-      <p class="hint">ลากบนหน้ากระดาษเพื่อเพิ่มกรอบใหม่ · ลากกรอบเพื่อย้าย · ลากขอบเพื่อปรับขนาด ·
-         กด <kbd>⌫</kbd> เพื่อลบ · กด <kbd>Ctrl</kbd>+<kbd>Z</kbd> (หรือ <kbd>⌘Z</kbd> บน Mac) เพื่อย้อนกลับ</p>
-      <p class="hint touch-only">แตะปุ่ม ↓ เพื่อบันทึกรูป — ถ้าเครื่องเปิดรูปขึ้นมาแทนที่จะบันทึก
-         ให้กดค้างที่รูปแล้วเลือก “บันทึกลงในรูปภาพ”</p>
-      <div id="fig-list" class="fig-list"></div>
       <div class="row">
-        <button id="btn-redetect" class="ghost">ค้นหาใหม่</button>
-        <button id="btn-clear" class="ghost">ลบกรอบทั้งหมด</button>
+        <button id="btn-all" class="ghost">เลือกทั้งหมด</button>
+        <button id="btn-none" class="ghost">ไม่เลือกเลย</button>
       </div>
+      <div class="row">
+        <button id="btn-read" class="primary">อ่านมุมที่เลือก</button>
+      </div>
+      <div class="row">
+        <button id="btn-svg-all" class="ghost">ดาวน์โหลด SVG ทั้งหมด</button>
+      </div>
+      <p class="hint" id="read-hint">เลือกรูปที่ต้องการแล้วกด “อ่านมุมที่เลือก”
+         AI จะแปลงรูปเป็นเส้นและมุมที่แก้ค่าได้</p>
     </div>
 
     <div class="panel">
@@ -65,45 +89,17 @@
       <label class="field">
         <span>หมุนหน้ากระดาษ <output id="out-angle">0.0°</output></span>
         <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
-        <small>ปกติโปรแกรมปรับให้ตรงเองอยู่แล้ว ปรับตรงนี้เฉพาะตอนที่หน้ายังเอียงอยู่</small>
       </label>
-      <label class="field">
-        <span>ขนาดตัวหนังสือในหน้า <output id="out-th">อัตโนมัติ</output></span>
-        <input id="in-th" type="range" min="0" max="60" step="1" value="0">
-        <small>เพิ่มค่านี้ถ้าโปรแกรมจับเศษตัวหนังสือมาเป็นรูป
-               ลดค่าลงถ้ารูปเล็ก ๆ ถูกมองข้าม</small>
-      </label>
-    </div>
-
-    <div class="panel" id="ai-panel">
-      <div class="panel-head"><h2>อ่านรูปด้วย AI</h2><span id="ai-state" class="pill">ปิด</span></div>
-      <p class="hint">แปลงรูปที่ตัดได้ให้เป็นเส้นและมุมที่แก้ไขค่าได้ แล้วส่งออกเป็นไฟล์ SVG
-         สำหรับวางใน Word</p>
-      <div id="key-unset">
-        <label class="field">
-          <span>Gemini API key</span>
-          <input id="in-key" type="password" spellcheck="false" autocomplete="off"
-                 placeholder="AIza…">
-          <small>ขอคีย์ฟรีได้ที่ aistudio.google.com/apikey — คีย์จะถูกเก็บไว้ในเบราว์เซอร์
-                 ของเครื่องนี้เท่านั้น ไม่ถูกส่งไปที่เซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
-        </label>
-        <div class="row"><button id="btn-key-save" class="ghost">บันทึกคีย์</button></div>
-      </div>
-      <div id="key-set" hidden>
-        <p class="hint">ใช้คีย์ <code id="key-mask"></code> อยู่</p>
-        <div class="row">
-          <button id="btn-read" class="primary">อ่านรูปที่เลือก</button>
-          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
-        </div>
-      </div>
+      <label class="check"><input id="in-manual" type="checkbox"> เพิ่มกรอบเองได้ (ปกติไม่ต้องใช้)</label>
+      <p class="hint">เปิดไว้เมื่อ AI มองข้ามรูปบางรูป แล้วลากกรอบคลุมรูปนั้นบนหน้ากระดาษ</p>
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h2>ไฟล์ที่จะบันทึก</h2></div>
+      <div class="panel-head"><h2>ไฟล์ภาพ</h2></div>
       <label class="field">
-        <span>รูปแบบภาพ</span>
+        <span>รูปแบบภาพ (PNG)</span>
         <select id="in-mode">
-          <option value="gray">โทนเทาสะอาด (แนะนำ)</option>
+          <option value="gray">โทนเทาสะอาด</option>
           <option value="bw">ขาวดำล้วน</option>
           <option value="transparent">พื้นหลังโปร่งใส</option>
         </select>
@@ -111,40 +107,16 @@
       <label class="field">
         <span>ความกว้าง <output id="out-width">900 พิกเซล</output></span>
         <input id="in-width" type="range" min="0" max="2000" step="50" value="900">
-        <small>ตั้งเป็น 0 เพื่อใช้ขนาดเดิม ทุกไฟล์บันทึกที่ความละเอียด 300 dpi
-               ดังนั้น 900 พิกเซล จะกว้างประมาณ 3 นิ้วเมื่อวางใน Word</small>
       </label>
       <label class="check"><input id="in-bolder" type="checkbox"> ทำเส้นให้หนาขึ้น</label>
       <label class="field">
         <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
         <input id="in-prefix" type="text" value="q" spellcheck="false">
-        <small>เช่น ตั้งเป็น q จะได้ q01.png, q02.png ไปเรื่อย ๆ ตามลำดับข้อ</small>
       </label>
-      <div class="row">
-        <button id="btn-zip" class="primary">ดาวน์โหลดทั้งหมด (.zip)</button>
-      </div>
+      <div class="row"><button id="btn-zip" class="ghost">ดาวน์โหลด PNG ทั้งหมด (.zip)</button></div>
     </div>
   </aside>
 </main>
-
-<div id="compare" class="compare" hidden>
-  <div class="compare-inner">
-    <header>
-      <h2>ตรวจสอบรูปที่ AI อ่านได้</h2>
-      <button id="compare-close" class="ghost">ปิด</button>
-    </header>
-    <p class="hint">เทียบรูปต้นฉบับกับรูปที่สร้างใหม่ทีละเส้นทีละมุม
-       ถ้าตรงกันจึงนำไปใช้ AI อ่านตัวเลขผิดได้</p>
-    <div class="compare-grid">
-      <figure><figcaption>ต้นฉบับที่ตัดมา</figcaption><img id="compare-crop" alt=""></figure>
-      <figure><figcaption>สร้างใหม่จากที่ AI อ่าน</figcaption><div id="compare-svg"></div></figure>
-    </div>
-    <div id="compare-notes"></div>
-    <div class="row">
-      <button id="compare-svg-dl" class="primary">ดาวน์โหลด SVG</button>
-    </div>
-  </div>
-</div>
 
 <div id="toast" class="toast" hidden></div>
 

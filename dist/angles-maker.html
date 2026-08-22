@@ -77,7 +77,35 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 main { flex: 1; display: flex; min-height: 0; }
 .stage { flex: 1; position: relative; background: var(--stage); overflow: hidden; }
-.viewport { position: absolute; inset: 0; overflow: auto; padding: 20px; }
+.workspace { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.page-view { flex: 0 0 34%; min-height: 160px; overflow: auto; padding: 14px;
+  display: flex; align-items: center; justify-content: center; }
+.gallery { flex: 1; overflow-y: auto; background: var(--bg); padding: 14px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;
+  align-content: start; }
+.gallery-empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 30px 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.card.off { opacity: 0.5; }
+.card-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.card-name { font-weight: 650; flex: 1; }
+.card-state { font-size: 11.5px; color: var(--muted); background: var(--bg);
+  border-radius: 10px; padding: 1px 8px; }
+.card-state.done { color: var(--accent); background: var(--accent-soft); }
+.card-state.busy { color: #7a5b00; background: #f7edd0; }
+.card-body { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
+.card-body figure { margin: 0; border: 1px solid var(--line); border-radius: 7px; padding: 6px;
+  background: #fff; }
+.card-body figcaption { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.card-body img, .card-body canvas, .svg-holder svg { max-width: 100%; height: auto; display: block;
+  margin: 0 auto; }
+.svg-holder { touch-action: none; }
+.angles { margin: 8px 0 6px; display: flex; flex-direction: column; gap: 5px; }
+.angle-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.angle-at { color: var(--muted); min-width: 62px; }
+.angle-row input { flex: 1; padding: 4px 7px; }
+.angle-measured { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 46px;
+  text-align: right; }
+.box.off { opacity: 0.35; }
 .canvas-wrap { position: relative; margin: 0 auto; line-height: 0; }
 .canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
   box-shadow: 0 2px 18px #0006; border-radius: 2px; }
@@ -227,7 +255,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
 </head>
 <body>
 <header class="bar">
-  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → ไฟล์ PNG แยกทีละรูป</span></div>
+  <div class="brand">Angles&nbsp;Maker <span class="sub">รูปถ่ายหน้าหนังสือ → มุมที่แก้ไขค่าได้ → SVG สำหรับ Word</span></div>
   <div class="bar-actions">
     <button id="btn-add" class="primary">เพิ่มรูปภาพ…</button>
     <button id="btn-demo" class="ghost">หน้าตัวอย่าง</button>
@@ -242,39 +270,63 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     <div id="drop" class="drop">
       <div class="drop-inner">
         <h1>ลากรูปถ่ายหน้าหนังสือมาวางตรงนี้</h1>
-        <p>โปรแกรมจะหารูปเรขาคณิตทุกรูปในหน้านั้น ปรับให้ตรง ลบเงาและพื้นสีเทาออก
-           แล้วบันทึกเป็นไฟล์ PNG แยกทีละรูป พร้อมนำไปวางในข้อสอบ Word ได้ทันที</p>
-        <p>ไม่มีการอัปโหลดไฟล์ขึ้นอินเทอร์เน็ต ทุกอย่างทำงานอยู่ในเครื่องนี้ทั้งหมด
-           และใช้งานได้แม้ไม่ต่อเน็ต</p>
+        <p>โปรแกรมจะปรับหน้าให้ตรง ลบเงาออก แล้วให้ AI หารูปมุมทุกรูปในหน้านั้นเอง
+           คุณเพียงเลือกว่าจะใช้รูปไหน แก้ค่ามุมได้ตามต้องการ แล้วบันทึกเป็นไฟล์ SVG
+           ไปวางใน Word</p>
         <button id="btn-add2" class="primary big">เลือกรูปภาพ…</button>
-        <p class="muted">รองรับไฟล์ JPG, PNG และ WebP — ไฟล์ HEIC จาก iPhone บางเบราว์เซอร์เปิดไม่ได้
-           ถ้าเปิดไม่ได้โปรแกรมจะบอกวิธีแปลงไฟล์ให้</p>
+        <p class="muted">รองรับ JPG, PNG, WebP · ต้องใส่ Gemini API key หนึ่งครั้งก่อนใช้งาน</p>
       </div>
     </div>
-    <div id="viewport" class="viewport" hidden>
-      <div id="canvas-wrap" class="canvas-wrap">
-        <canvas id="page-canvas"></canvas>
-        <div id="overlay" class="overlay"></div>
+
+    <div id="workspace" class="workspace" hidden>
+      <div id="page-view" class="page-view">
+        <div id="canvas-wrap" class="canvas-wrap">
+          <canvas id="page-canvas"></canvas>
+          <div id="overlay" class="overlay"></div>
+        </div>
       </div>
+      <div id="gallery" class="gallery"></div>
     </div>
     <div id="status" class="status" hidden></div>
   </section>
 
   <aside class="side" id="side" hidden>
+    <div class="panel" id="ai-panel">
+      <div class="panel-head"><h2>Gemini</h2><span id="ai-state" class="pill">ยังไม่ใส่คีย์</span></div>
+      <div id="key-unset">
+        <label class="field">
+          <span>API key</span>
+          <input id="in-key" type="password" spellcheck="false" autocomplete="off" placeholder="AIza…">
+          <small>ขอคีย์ฟรีที่ aistudio.google.com/apikey — เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น
+                 ไม่ส่งไปเซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
+        </label>
+        <div class="row"><button id="btn-key-save" class="primary">บันทึกคีย์</button></div>
+      </div>
+      <div id="key-set" hidden>
+        <p class="hint">ใช้คีย์ <code id="key-mask"></code></p>
+        <div class="row">
+          <button id="btn-find" class="ghost">ค้นหารูปใหม่</button>
+          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-head">
-        <h2>รูปที่ตัดได้</h2>
-        <span id="fig-count" class="pill">0</span>
+        <h2>รูปที่พบ</h2><span id="fig-count" class="pill">0</span>
       </div>
-      <p class="hint">ลากบนหน้ากระดาษเพื่อเพิ่มกรอบใหม่ · ลากกรอบเพื่อย้าย · ลากขอบเพื่อปรับขนาด ·
-         กด <kbd>⌫</kbd> เพื่อลบ · กด <kbd>Ctrl</kbd>+<kbd>Z</kbd> (หรือ <kbd>⌘Z</kbd> บน Mac) เพื่อย้อนกลับ</p>
-      <p class="hint touch-only">แตะปุ่ม ↓ เพื่อบันทึกรูป — ถ้าเครื่องเปิดรูปขึ้นมาแทนที่จะบันทึก
-         ให้กดค้างที่รูปแล้วเลือก “บันทึกลงในรูปภาพ”</p>
-      <div id="fig-list" class="fig-list"></div>
       <div class="row">
-        <button id="btn-redetect" class="ghost">ค้นหาใหม่</button>
-        <button id="btn-clear" class="ghost">ลบกรอบทั้งหมด</button>
+        <button id="btn-all" class="ghost">เลือกทั้งหมด</button>
+        <button id="btn-none" class="ghost">ไม่เลือกเลย</button>
       </div>
+      <div class="row">
+        <button id="btn-read" class="primary">อ่านมุมที่เลือก</button>
+      </div>
+      <div class="row">
+        <button id="btn-svg-all" class="ghost">ดาวน์โหลด SVG ทั้งหมด</button>
+      </div>
+      <p class="hint" id="read-hint">เลือกรูปที่ต้องการแล้วกด “อ่านมุมที่เลือก”
+         AI จะแปลงรูปเป็นเส้นและมุมที่แก้ค่าได้</p>
     </div>
 
     <div class="panel">
@@ -282,45 +334,17 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       <label class="field">
         <span>หมุนหน้ากระดาษ <output id="out-angle">0.0°</output></span>
         <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
-        <small>ปกติโปรแกรมปรับให้ตรงเองอยู่แล้ว ปรับตรงนี้เฉพาะตอนที่หน้ายังเอียงอยู่</small>
       </label>
-      <label class="field">
-        <span>ขนาดตัวหนังสือในหน้า <output id="out-th">อัตโนมัติ</output></span>
-        <input id="in-th" type="range" min="0" max="60" step="1" value="0">
-        <small>เพิ่มค่านี้ถ้าโปรแกรมจับเศษตัวหนังสือมาเป็นรูป
-               ลดค่าลงถ้ารูปเล็ก ๆ ถูกมองข้าม</small>
-      </label>
-    </div>
-
-    <div class="panel" id="ai-panel">
-      <div class="panel-head"><h2>อ่านรูปด้วย AI</h2><span id="ai-state" class="pill">ปิด</span></div>
-      <p class="hint">แปลงรูปที่ตัดได้ให้เป็นเส้นและมุมที่แก้ไขค่าได้ แล้วส่งออกเป็นไฟล์ SVG
-         สำหรับวางใน Word</p>
-      <div id="key-unset">
-        <label class="field">
-          <span>Gemini API key</span>
-          <input id="in-key" type="password" spellcheck="false" autocomplete="off"
-                 placeholder="AIza…">
-          <small>ขอคีย์ฟรีได้ที่ aistudio.google.com/apikey — คีย์จะถูกเก็บไว้ในเบราว์เซอร์
-                 ของเครื่องนี้เท่านั้น ไม่ถูกส่งไปที่เซิร์ฟเวอร์ของเว็บนี้ และไม่อยู่ในโค้ด</small>
-        </label>
-        <div class="row"><button id="btn-key-save" class="ghost">บันทึกคีย์</button></div>
-      </div>
-      <div id="key-set" hidden>
-        <p class="hint">ใช้คีย์ <code id="key-mask"></code> อยู่</p>
-        <div class="row">
-          <button id="btn-read" class="primary">อ่านรูปที่เลือก</button>
-          <button id="btn-key-clear" class="ghost">ลบคีย์</button>
-        </div>
-      </div>
+      <label class="check"><input id="in-manual" type="checkbox"> เพิ่มกรอบเองได้ (ปกติไม่ต้องใช้)</label>
+      <p class="hint">เปิดไว้เมื่อ AI มองข้ามรูปบางรูป แล้วลากกรอบคลุมรูปนั้นบนหน้ากระดาษ</p>
     </div>
 
     <div class="panel">
-      <div class="panel-head"><h2>ไฟล์ที่จะบันทึก</h2></div>
+      <div class="panel-head"><h2>ไฟล์ภาพ</h2></div>
       <label class="field">
-        <span>รูปแบบภาพ</span>
+        <span>รูปแบบภาพ (PNG)</span>
         <select id="in-mode">
-          <option value="gray">โทนเทาสะอาด (แนะนำ)</option>
+          <option value="gray">โทนเทาสะอาด</option>
           <option value="bw">ขาวดำล้วน</option>
           <option value="transparent">พื้นหลังโปร่งใส</option>
         </select>
@@ -328,40 +352,16 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       <label class="field">
         <span>ความกว้าง <output id="out-width">900 พิกเซล</output></span>
         <input id="in-width" type="range" min="0" max="2000" step="50" value="900">
-        <small>ตั้งเป็น 0 เพื่อใช้ขนาดเดิม ทุกไฟล์บันทึกที่ความละเอียด 300 dpi
-               ดังนั้น 900 พิกเซล จะกว้างประมาณ 3 นิ้วเมื่อวางใน Word</small>
       </label>
       <label class="check"><input id="in-bolder" type="checkbox"> ทำเส้นให้หนาขึ้น</label>
       <label class="field">
         <span>ชื่อไฟล์ขึ้นต้นด้วย</span>
         <input id="in-prefix" type="text" value="q" spellcheck="false">
-        <small>เช่น ตั้งเป็น q จะได้ q01.png, q02.png ไปเรื่อย ๆ ตามลำดับข้อ</small>
       </label>
-      <div class="row">
-        <button id="btn-zip" class="primary">ดาวน์โหลดทั้งหมด (.zip)</button>
-      </div>
+      <div class="row"><button id="btn-zip" class="ghost">ดาวน์โหลด PNG ทั้งหมด (.zip)</button></div>
     </div>
   </aside>
 </main>
-
-<div id="compare" class="compare" hidden>
-  <div class="compare-inner">
-    <header>
-      <h2>ตรวจสอบรูปที่ AI อ่านได้</h2>
-      <button id="compare-close" class="ghost">ปิด</button>
-    </header>
-    <p class="hint">เทียบรูปต้นฉบับกับรูปที่สร้างใหม่ทีละเส้นทีละมุม
-       ถ้าตรงกันจึงนำไปใช้ AI อ่านตัวเลขผิดได้</p>
-    <div class="compare-grid">
-      <figure><figcaption>ต้นฉบับที่ตัดมา</figcaption><img id="compare-crop" alt=""></figure>
-      <figure><figcaption>สร้างใหม่จากที่ AI อ่าน</figcaption><div id="compare-svg"></div></figure>
-    </div>
-    <div id="compare-notes"></div>
-    <div class="row">
-      <button id="compare-svg-dl" class="primary">ดาวน์โหลด SVG</button>
-    </div>
-  </div>
-</div>
 
 <div id="toast" class="toast" hidden></div>
 
@@ -2087,8 +2087,11 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
         const pt = figure.points[id];
         if (pt.show === false) continue;
         const p = P(id);
-        out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' + o.pointRadius +
-                 '" fill="' + o.color + '"/>');
+        out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' +
+                 (o.interactive ? Math.max(o.pointRadius, 7) : o.pointRadius) +
+                 '" fill="' + o.color + '"' +
+                 (o.interactive ? ' data-point="' + esc(id) + '" class="pt"' +
+                                  ' fill-opacity="0.9" style="cursor:grab"' : '') + '/>');
         const label = pt.label === undefined ? id : pt.label;
         if (label) {
           /* Push the name away from the middle of the figure so it never lands
@@ -2186,6 +2189,122 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     },
     required: ['points', 'lines', 'angles']
   };
+
+  /* Finding the figures on a page. Kept as its own call from reading one
+     figure's geometry: asking for both at once means twenty diagrams parsed in
+     a single pass, and the ones near the bottom of the page suffer for it. */
+  const FIND_PROMPT = [
+    'This is one page of a Thai mathematics workbook, already straightened and cleaned.',
+    'Find every geometry DIAGRAM on the page — the drawings made of straight lines, angles,',
+    'triangles and polygons that belong to the questions.',
+    '',
+    'Return one entry per diagram, with a bounding box on a 0-1000 grid measured over the whole',
+    'image, x to the right and y downward. The box must contain the whole drawing including any',
+    'letters and angle values printed on it, and must NOT contain the question sentence above it',
+    'or the multiple-choice answers beside it.',
+    '',
+    'question is the printed question number the diagram belongs to, as digits, when one is',
+    'visible near it; otherwise an empty string.',
+    '',
+    'Ignore running text, headings, page numbers, decorative rules, clip-art icons and anything',
+    'faintly showing through from the other side of the paper.'
+  ].join('\n');
+
+  const FIND_SCHEMA = {
+    type: 'object',
+    properties: {
+      figures: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            question: { type: 'string' },
+            x: { type: 'number' }, y: { type: 'number' },
+            width: { type: 'number' }, height: { type: 'number' }
+          },
+          required: ['x', 'y', 'width', 'height']
+        }
+      }
+    },
+    required: ['figures']
+  };
+
+  function buildFindRequest(base64, options) {
+    const o = options || {};
+    return {
+      model: o.model || MODEL,
+      input: [
+        { type: 'text', text: o.prompt || FIND_PROMPT },
+        { type: 'image', data: base64, mime_type: o.mimeType || 'image/png' }
+      ],
+      response_format: { type: 'text', mime_type: 'application/json', schema: FIND_SCHEMA }
+    };
+  }
+
+  function parseFindResponse(body) {
+    const seen = [];
+    const walk = node => {
+      if (typeof node === 'string') { seen.push(node); return; }
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node && typeof node === 'object') { for (const k in node) walk(node[k]); }
+    };
+    walk(body);
+    for (const s of seen) {
+      const t = s.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+      if (t[0] !== '{') continue;
+      try {
+        const parsed = JSON.parse(t);
+        if (parsed && Array.isArray(parsed.figures)) return parsed;
+      } catch (e) { /* keep looking */ }
+    }
+    if (body && Array.isArray(body.figures)) return body;
+    const err = new Error('ไม่พบรูปในคำตอบของ Gemini');
+    err.raw = JSON.stringify(body).slice(0, 1200);
+    throw err;
+  }
+
+  /* 0-1000 grid to pixels, with the boxes sorted into reading order and any
+     nonsense dropped rather than handed on. */
+  function toBoxes(found, width, height, options) {
+    const o = Object.assign({ minSide: 0.02, maxArea: 0.7, pad: 0.02 }, options || {});
+    const out = [];
+    for (const f of (found && found.figures) || []) {
+      const x = (+f.x || 0) / 1000 * width, y = (+f.y || 0) / 1000 * height;
+      const w = (+f.width || 0) / 1000 * width, h = (+f.height || 0) / 1000 * height;
+      if (!(w > 0 && h > 0)) continue;
+      if (w < o.minSide * width && h < o.minSide * height) continue;
+      if (w * h > o.maxArea * width * height) continue;
+      const pad = Math.round(o.pad * Math.max(w, h));
+      const x0 = Math.max(0, Math.round(x - pad)), y0 = Math.max(0, Math.round(y - pad));
+      out.push({
+        x: x0, y: y0,
+        w: Math.min(width, Math.round(x + w + pad)) - x0,
+        h: Math.min(height, Math.round(y + h + pad)) - y0,
+        question: (f.question || '').replace(/[^\d]/g, '')
+      });
+    }
+    return AM.detect ? AM.detect.readingOrder(out) : out;
+  }
+
+  async function findFigures(base64, apiKey, options) {
+    if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
+    const o = options || {};
+    const res = await fetch(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildFindRequest(base64, o)),
+      signal: o.signal
+    });
+    let body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      const err = new Error(describeError(res.status, body));
+      err.status = res.status;
+      err.raw = body ? JSON.stringify(body).slice(0, 1200) : '';
+      throw err;
+    }
+    return toBoxes(parseFindResponse(body), o.width || 1000, o.height || 1000, o);
+  }
 
   function buildRequest(base64, options) {
     const o = options || {};
@@ -2324,7 +2443,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
   }
 
   AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
-                 describeError, PROMPT, SCHEMA, MODEL, ENDPOINT };
+                 findFigures, buildFindRequest, parseFindResponse, toBoxes,
+                 describeError, PROMPT, SCHEMA, FIND_PROMPT, FIND_SCHEMA, MODEL, ENDPOINT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
 <script>
@@ -2354,6 +2474,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     activeId: null,
     selected: null,
     undo: [],
+    manual: false,
     settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
   };
   /* Only ever one full-resolution deskewed page in memory: a 12 MP photo is
@@ -2488,13 +2609,12 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     renderPages();
     renderAll();
     schedulePrepare(0);
-    if (!page.boxes.length) {
-      toast('ไม่พบรูปในหน้านี้ — ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการเพื่อเพิ่มเอง', 7000);
-    }
+    if (getKey() && !page.searched) findWithAI(page);
   }
 
   const makeBox = (b, manual) => ({
-    id: nextId++, x: b.x, y: b.y, w: b.w, h: b.h, label: b.label || '', manual: !!manual
+    id: nextId++, x: b.x, y: b.y, w: b.w, h: b.h, label: b.label || '',
+    manual: !!manual, selected: true
   });
 
   function rotateBoxes(boxes, delta, ow, oh, nw, nh) {
@@ -2573,7 +2693,7 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     const page = active();
     const has = !!(page && page.ready);
     $('#drop').hidden = has;
-    $('#viewport').hidden = !has;
+    $('#workspace').hidden = !has;
     $('#side').hidden = !has;
     if (!has) return;
 
@@ -2583,39 +2703,44 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     canvas.getContext('2d').putImageData(
       new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
 
-    const vp = $('#viewport');
-    const availW = vp.clientWidth - 40, availH = vp.clientHeight - 40;
+    const view = $('#page-view');
+    const availW = view.clientWidth - 28, availH = view.clientHeight - 28;
     const width = Math.min(availW, availH * (d.w / d.h));
-    const wrap = $('#canvas-wrap');
-    wrap.style.width = Math.max(120, width) + 'px';
+    $('#canvas-wrap').style.width = Math.max(100, width) + 'px';
     renderBoxes();
-    renderList();
+    renderGallery();
   }
 
   function renderBoxes() {
     const page = active();
+    if (!page) return;
     const ov = $('#overlay');
     ov.innerHTML = '';
+    ov.style.pointerEvents = state.manual ? 'auto' : 'none';
     const d = page.deskewed;
-    page.boxes.forEach((b, i) => {
-      const n = el('div', 'box' + (state.selected === b.id ? ' sel' : ''));
+    page.boxes.forEach(b => {
+      const n = el('div', 'box' + (state.selected === b.id ? ' sel' : '') +
+                             (b.selected === false ? ' off' : ''));
       n.style.left = (100 * b.x / d.w) + '%';
       n.style.top = (100 * b.y / d.h) + '%';
       n.style.width = (100 * b.w / d.w) + '%';
       n.style.height = (100 * b.h / d.h) + '%';
       n.dataset.id = b.id;
-      n.appendChild(el('span', 'tag', nameFor(page, b, i)));
-      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(k => {
-        const h = el('div', 'h ' + k);
-        h.dataset.handle = k;
-        n.appendChild(h);
-      });
+      n.appendChild(el('span', 'tag', nameFor(page, b)));
+      if (state.manual) {
+        ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(k => {
+          const h = el('div', 'h ' + k);
+          h.dataset.handle = k;
+          n.appendChild(h);
+        });
+      }
       ov.appendChild(n);
     });
   }
 
   /* Numbering runs across every loaded page, so three photos of one exercise
-     give a single q01..q20 sequence. */
+     give a single q01..q20 sequence. A question number read off the page wins,
+     since that is what the teacher will be typing next to it. */
   function figureIndex(page, box) {
     let n = 0;
     for (const p of state.pages) {
@@ -2628,61 +2753,226 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
   }
   function nameFor(page, box) {
     if (box.label) return box.label;
+    if (box.question) return state.settings.prefix + box.question.padStart(2, '0');
     return state.settings.prefix + String(figureIndex(page, box)).padStart(2, '0');
   }
 
-  function renderList() {
+  /* ---------- the gallery: pick figures, then shape them ---------- */
+
+  function renderGallery() {
     const page = active();
-    const list = $('#fig-list');
-    list.innerHTML = '';
-    $('#fig-count').textContent = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    const wrap = $('#gallery');
+    wrap.innerHTML = '';
+    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    $('#fig-count').textContent = total;
+    if (!page) return;
+
     if (!page.boxes.length) {
-      list.appendChild(el('div', 'empty', 'ยังไม่พบรูปในหน้านี้ ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการ'));
+      const empty = el('div', 'gallery-empty');
+      empty.textContent = page.searched
+        ? 'ไม่พบรูปมุมในหน้านี้ — เปิด “เพิ่มกรอบเองได้” แล้วลากกรอบคลุมรูปที่ต้องการ'
+        : 'ใส่ Gemini API key แล้วกด “ค้นหารูปใหม่” เพื่อให้ AI หารูปมุมในหน้านี้';
+      wrap.appendChild(empty);
       return;
     }
-    page.boxes.forEach(b => {
-      const row = el('div', 'fig' + (state.selected === b.id ? ' sel' : ''));
-      row.appendChild(previewCanvas(page, b));
-      const name = el('div', 'name');
-      const input = el('input');
-      input.value = nameFor(page, b);
-      input.onchange = () => {
-        b.label = AM.util.sanitizeName(input.value, '');
-        input.value = nameFor(page, b);
-        renderBoxes();
-      };
-      input.onclick = ev => ev.stopPropagation();
-      name.appendChild(input);
-      row.appendChild(name);
-      let dl;
-      if (b.url) {
-        /* A real href, set before the tap. No await stands between the user's
-           finger and the download starting. */
-        dl = el('a', 'dl', '↓');
-        dl.href = b.url;
-        dl.download = AM.util.sanitizeName(nameFor(page, b), 'figure') + '.png';
-        dl.title = 'ดาวน์โหลดรูปนี้';
-        dl.onclick = ev => ev.stopPropagation();
+
+    page.boxes.forEach(box => {
+      const card = el('div', 'card' + (box.selected === false ? ' off' : ''));
+
+      const head = el('label', 'card-head');
+      const tick = el('input');
+      tick.type = 'checkbox';
+      tick.checked = box.selected !== false;
+      tick.onchange = () => { box.selected = tick.checked; renderGallery(); renderBoxes(); };
+      head.appendChild(tick);
+      head.appendChild(el('span', 'card-name', nameFor(page, box)));
+      const st = el('span', 'card-state ' + (box.figure ? 'done' : box.reading ? 'busy' : ''));
+      st.textContent = box.figure ? 'แก้ค่าได้' : box.reading ? 'กำลังอ่าน…' : 'ยังไม่ได้อ่าน';
+      head.appendChild(st);
+      card.appendChild(head);
+
+      const body = el('div', 'card-body');
+      const crop = el('figure', 'card-crop');
+      crop.appendChild(el('figcaption', null, 'ต้นฉบับ'));
+      if (box.url) {
+        const img = el('img');
+        img.src = box.url;
+        img.alt = '';
+        crop.appendChild(img);
       } else {
-        dl = el('span', 'dl waiting', '·••');
-        dl.title = 'กำลังเตรียมไฟล์';
-        dl.onclick = ev => {
-          ev.stopPropagation();
-          toast('กำลังเตรียมไฟล์รูปนี้อยู่ รอสักครู่แล้วลองใหม่', 3000);
-        };
+        crop.appendChild(previewCanvas(page, box));
       }
-      row.appendChild(dl);
-      row.onclick = () => { state.selected = b.id; renderBoxes(); renderList(); };
-      list.appendChild(row);
+      body.appendChild(crop);
+
+      if (box.figure) {
+        const built = el('figure', 'card-built');
+        built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อขยับเส้น'));
+        const holder = el('div', 'svg-holder');
+        holder.innerHTML = AM.svg.render(box.figure, { width: 300, interactive: true });
+        attachPointDrag(holder, page, box);
+        built.appendChild(holder);
+        body.appendChild(built);
+      }
+      card.appendChild(body);
+
+      if (box.figure) {
+        card.appendChild(angleEditor(page, box));
+        for (const c of box.figure.conflicts || []) {
+          const d = el('div', 'conflict');
+          d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายอ่านได้ ' + c.claimed +
+            '° แต่รูปวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
+            ' — เทียบกับต้นฉบับก่อนใช้';
+          card.appendChild(d);
+        }
+        if (box.figure.notes) {
+          card.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + box.figure.notes));
+        }
+        const actions = el('div', 'row');
+        const dl = el('button', 'primary', 'ดาวน์โหลด SVG');
+        dl.onclick = () => downloadSvg(page, box);
+        actions.appendChild(dl);
+        const again = el('button', 'ghost', 'อ่านใหม่');
+        again.onclick = () => readWithAI(page, box);
+        actions.appendChild(again);
+        card.appendChild(actions);
+      }
+      wrap.appendChild(card);
     });
   }
 
+  /* Every angle the figure knows about, as an editable value. Typing a number
+     re-solves the whole figure, so the drawing and the label cannot disagree. */
+  function angleEditor(page, box) {
+    const fig = box.figure;
+    const wrap = el('div', 'angles');
+    fig.angles.forEach((a, i) => {
+      const row = el('label', 'angle-row');
+      row.appendChild(el('span', 'angle-at', 'มุมที่ ' + a.vertex));
+      const input = el('input');
+      input.type = 'text';
+      input.value = a.label || '';
+      input.placeholder = 'เช่น 82° หรือ x';
+      input.onchange = () => setAngleLabel(page, box, i, input.value);
+      row.appendChild(input);
+      const measured = AM.geometry.measure(fig, a);
+      row.appendChild(el('span', 'angle-measured',
+                         measured === null ? '' : Math.round(measured * 10) / 10 + '°'));
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function constraintFor(fig, angle) {
+    return fig.constraints.find(c => c.type === 'angle' && c.vertex === angle.vertex &&
+                                     c.from === angle.from && c.to === angle.to);
+  }
+
+  function setAngleLabel(page, box, index, text) {
+    const fig = box.figure;
+    const angle = fig.angles[index];
+    angle.label = text;
+    const value = AM.extract.numericLabel(text);
+    let c = constraintFor(fig, angle);
+    if (value === null) {
+      /* "x" or "x + 50°" is a caption, not a measurement — stop driving the
+         geometry from it and leave the drawing where it is. */
+      if (c) c.enabled = false;
+    } else {
+      if (!c) {
+        c = { type: 'angle', vertex: angle.vertex, from: angle.from, to: angle.to, value: value };
+        fig.constraints.push(c);
+        AM.geometry.captureSigns(fig);
+      }
+      c.value = value;
+      c.enabled = true;
+      c.suspect = false;
+      const r = AM.geometry.solve(fig);
+      if (!r.ok) {
+        toast('ค่ามุมชุดนี้ขัดกันเอง รูปจึงยังไม่ตรงทุกมุม', 6000);
+      }
+      fig.conflicts = (fig.conflicts || []).filter(x => x.vertex !== angle.vertex);
+    }
+    invalidateBox(box);
+    schedulePrepare();
+    renderGallery();
+  }
+
+  /* Dragging a point is the other half of customising: it changes the lines
+     themselves. The dragged point is pinned while the solver settles the rest,
+     so the constraints still hold when the finger lifts. */
+  function attachPointDrag(holder, page, box) {
+    const svg = holder.querySelector('svg');
+    if (!svg) return;
+    svg.addEventListener('pointerdown', ev => {
+      const target = ev.target;
+      const id = target && target.dataset ? target.dataset.point : null;
+      if (!id) return;
+      ev.preventDefault();
+      svg.setPointerCapture(ev.pointerId);
+      const fig = box.figure;
+      const b = AM.geometry.bounds(fig);
+      const rect = svg.getBoundingClientRect();
+      const vb = svg.viewBox.baseVal;
+      const pad = 46;
+      const scale = (vb.width - pad * 2) / b.w;
+      const toFigure = e => ({
+        x: b.x + ((e.clientX - rect.left) / rect.width * vb.width - pad) / scale,
+        y: b.y + ((e.clientY - rect.top) / rect.height * vb.height - pad) / scale
+      });
+      const point = fig.points[id];
+      const wasFixed = point.fixed;
+      const move = e => {
+        const p = toFigure(e);
+        point.x = p.x; point.y = p.y;
+        point.fixed = true;
+        AM.geometry.solve(fig);
+        point.fixed = wasFixed;
+        holder.innerHTML = AM.svg.render(fig, { width: 300, interactive: true });
+        attachPointDrag(holder, page, box);
+      };
+      const up = () => {
+        svg.removeEventListener('pointermove', move);
+        svg.removeEventListener('pointerup', up);
+        invalidateBox(box);
+        schedulePrepare();
+        renderGallery();
+      };
+      svg.addEventListener('pointermove', move);
+      svg.addEventListener('pointerup', up);
+    });
+  }
+
+  function downloadSvg(page, box) {
+    const svg = AM.svg.render(box.figure, { width: 640 });
+    saveBytes(new TextEncoder().encode(svg),
+              AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
+  }
+
+  function downloadAllSvg() {
+    const entries = [];
+    const taken = new Set();
+    for (const p of state.pages) {
+      for (const b of p.boxes) {
+        if (!b.figure || b.selected === false) continue;
+        const name = AM.util.uniqueName(
+          AM.util.sanitizeName(nameFor(p, b), 'figure') + '.svg', taken);
+        entries.push({ name, data: new TextEncoder().encode(AM.svg.render(b.figure, { width: 640 })) });
+      }
+    }
+    if (!entries.length) { toast('ยังไม่มีรูปที่อ่านแล้ว กด “อ่านมุมที่เลือก” ก่อน', 5000); return; }
+    const stem = AM.util.sanitizeName(state.settings.prefix || 'figures', 'figures')
+      .replace(/[^\x20-\x7E]/g, '') || 'figures';
+    saveBytes(AM.zip.makeZip(entries), stem + '-svg.zip', 'application/zip');
+  }
+
+  const renderList = renderGallery;
+
   /* Previews come from the analysis-scale page, so nothing at full resolution
-     has to be decoded just to draw a 54px thumbnail. */
+     has to be decoded just to draw a thumbnail. */
   function previewCanvas(page, box) {
     const d = page.deskewed;
     const c = el('canvas');
-    c.width = 108; c.height = 76;
+    c.width = 240; c.height = 170;
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     const src = grayToCanvas(d.gray, d.w, d.h);
@@ -3020,45 +3310,84 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
   async function readWithAI(page, box) {
     const key = getKey();
     if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
-    status('กำลังอ่านรูปด้วย Gemini…');
+    box.reading = true;
+    renderGallery();
     try {
       if (!box.png) box.png = await renderFigure(page, box);
-      /* The cleaned, deskewed crop is what goes to the model — the same image
-         that would have been pasted into Word. */
+      /* The cleaned, deskewed crop is what the model sees — the same image that
+         would otherwise have been pasted into Word. */
       const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
       AM.geometry.solve(fig);
       box.figure = fig;
-      showComparison(page, box);
     } catch (e) {
-      toast('อ่านรูปไม่สำเร็จ: ' + (e && e.message), 9000);
+      toast('อ่านรูป ' + nameFor(page, box) + ' ไม่สำเร็จ: ' + (e && e.message), 9000);
       if (e && e.raw) console.warn('Gemini response:', e.raw);
+    }
+    box.reading = false;
+    renderGallery();
+  }
+
+  async function readSelected() {
+    const page = active();
+    if (!page) return;
+    const list = page.boxes.filter(b => b.selected !== false && !b.figure);
+    if (!list.length) { toast('ไม่มีรูปที่เลือกไว้และยังไม่ได้อ่าน', 4000); return; }
+    for (let i = 0; i < list.length; i++) {
+      status('กำลังอ่านมุม ' + (i + 1) + ' จาก ' + list.length + '…');
+      await readWithAI(page, list[i]);
     }
     status(null);
   }
 
-  function showComparison(page, box) {
-    const fig = box.figure;
-    $('#compare-crop').src = box.url || '';
-    $('#compare-svg').innerHTML = AM.svg.render(fig, { width: 380 });
-    const notes = $('#compare-notes');
-    notes.innerHTML = '';
-    for (const c of fig.conflicts || []) {
-      const d = el('div', 'conflict');
-      d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายเขียนว่า ' + c.claimed +
-        '° แต่รูปที่วาดวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
-        ' — ตรวจกับต้นฉบับก่อนใช้';
-      notes.appendChild(d);
+  /* The deskewed page as base64, small enough to keep the request cheap and
+     large enough that a 30px angle label survives. */
+  function pageBase64(page, maxWidth) {
+    const d = page.deskewed;
+    const src = grayToCanvas(d.gray, d.w, d.h);
+    const scale = Math.min(1, (maxWidth || 1100) / Math.max(d.w, d.h));
+    const c = el('canvas');
+    c.width = Math.round(d.w * scale);
+    c.height = Math.round(d.h * scale);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    return c.toDataURL('image/png').split(',')[1];
+  }
+
+  /* Detection is the model's job now. The offline detector still runs first so
+     something is on screen immediately and the app is not useless without a
+     key, but where a key exists the model's reading replaces it. */
+  async function findWithAI(page) {
+    const key = getKey();
+    if (!key) return;
+    status('กำลังให้ AI หารูปมุมในหน้านี้…');
+    try {
+      const d = page.deskewed;
+      const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
+                                                 { width: d.w, height: d.h });
+      if (boxes.length) {
+        for (const b of page.boxes) invalidateBox(b);
+        page.boxes = boxes.map(b => {
+          const box = makeBox(b, false);
+          box.question = b.question || '';
+          box.selected = true;
+          return box;
+        });
+        sortBoxes(page);
+      } else {
+        toast('AI ไม่พบรูปมุมในหน้านี้', 6000);
+      }
+      page.searched = true;
+    } catch (e) {
+      toast('ค้นหารูปไม่สำเร็จ: ' + (e && e.message), 9000);
+      if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
-    if (!(fig.conflicts || []).length) {
-      notes.appendChild(el('div', 'ok-note', 'ตัวเลขบนป้ายกับรูปที่วาดตรงกันทุกมุม'));
-    }
-    if (fig.notes) notes.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + fig.notes));
-    $('#compare-svg-dl').onclick = () => {
-      const svg = AM.svg.render(fig, { width: 640 });
-      saveBytes(new TextEncoder().encode(svg),
-                AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
-    };
-    $('#compare').hidden = false;
+    status(null);
+    renderPages();
+    renderAll();
+    schedulePrepare(0);
   }
 
   /* ---------- controls ---------- */
@@ -3069,25 +3398,27 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
     const deg = page.angle * 180 / Math.PI;
     $('#in-angle').value = deg.toFixed(1);
     $('#out-angle').textContent = deg.toFixed(1) + '°';
-    const th = page.textHeightOverride || 0;
-    $('#in-th').value = th;
-    $('#out-th').textContent = th ? th + ' พิกเซล'
-      : 'อัตโนมัติ (' + (page.autoTextHeight || 0) + ' พิกเซล)';
+
   }
 
   function initControls() {
     $('#btn-add').onclick = $('#btn-add2').onclick = () => $('#file-input').click();
     $('#file-input').onchange = ev => { addFiles(ev.target.files); ev.target.value = ''; };
     $('#btn-demo').onclick = addDemo;
-    $('#btn-redetect').onclick = () => processActive(true);
-    $('#btn-clear').onclick = () => {
-      const page = active();
-      if (!page) return;
-      pushUndo();
-      for (const b of page.boxes) invalidateBox(b);
-      page.boxes = [];
-      renderBoxes(); renderList(); renderPages(); updateZipButton();
+    $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
+    $('#btn-read').onclick = readSelected;
+    $('#btn-svg-all').onclick = downloadAllSvg;
+    $('#btn-all').onclick = () => {
+      const p = active(); if (!p) return;
+      p.boxes.forEach(b => { b.selected = true; });
+      renderGallery(); renderBoxes();
     };
+    $('#btn-none').onclick = () => {
+      const p = active(); if (!p) return;
+      p.boxes.forEach(b => { b.selected = false; });
+      renderGallery(); renderBoxes();
+    };
+    $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
     $('#btn-zip').onclick = exportZip;
 
     syncKeyPanel();
@@ -3107,8 +3438,6 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       if (!box) { toast('เลือกรูปที่ต้องการก่อน', 3000); return; }
       readWithAI(page, box);
     };
-    $('#compare-close').onclick = () => { $('#compare').hidden = true; };
-    $('#compare').onclick = ev => { if (ev.target.id === 'compare') $('#compare').hidden = true; };
 
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
@@ -3118,18 +3447,6 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
       page.angleForced = true;
       page.angle = +angle.value * Math.PI / 180;
       fullRes = null;
-      processActive(true);
-    };
-
-    const th = $('#in-th');
-    th.oninput = () => {
-      $('#out-th').textContent = +th.value ? th.value + ' พิกเซล'
-        : 'อัตโนมัติ (' + ((active() || {}).autoTextHeight || 0) + ' พิกเซล)';
-    };
-    th.onchange = () => {
-      const page = active();
-      if (!page) return;
-      page.textHeightOverride = +th.value || 0;
       processActive(true);
     };
 
@@ -3173,7 +3490,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 1
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
   AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
-             readWithAI, showComparison, getKey, bytesToBase64 };
+             readWithAI, readSelected, findWithAI, downloadSvg, downloadAllSvg,
+             setAngleLabel, renderGallery, getKey, bytesToBase64, pageBase64 };
 
   initControls();
   initEditing();

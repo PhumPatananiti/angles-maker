@@ -24,6 +24,7 @@
     activeId: null,
     selected: null,
     undo: [],
+    manual: false,
     settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
   };
   /* Only ever one full-resolution deskewed page in memory: a 12 MP photo is
@@ -158,13 +159,12 @@
     renderPages();
     renderAll();
     schedulePrepare(0);
-    if (!page.boxes.length) {
-      toast('ไม่พบรูปในหน้านี้ — ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการเพื่อเพิ่มเอง', 7000);
-    }
+    if (getKey() && !page.searched) findWithAI(page);
   }
 
   const makeBox = (b, manual) => ({
-    id: nextId++, x: b.x, y: b.y, w: b.w, h: b.h, label: b.label || '', manual: !!manual
+    id: nextId++, x: b.x, y: b.y, w: b.w, h: b.h, label: b.label || '',
+    manual: !!manual, selected: true
   });
 
   function rotateBoxes(boxes, delta, ow, oh, nw, nh) {
@@ -243,7 +243,7 @@
     const page = active();
     const has = !!(page && page.ready);
     $('#drop').hidden = has;
-    $('#viewport').hidden = !has;
+    $('#workspace').hidden = !has;
     $('#side').hidden = !has;
     if (!has) return;
 
@@ -253,39 +253,44 @@
     canvas.getContext('2d').putImageData(
       new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
 
-    const vp = $('#viewport');
-    const availW = vp.clientWidth - 40, availH = vp.clientHeight - 40;
+    const view = $('#page-view');
+    const availW = view.clientWidth - 28, availH = view.clientHeight - 28;
     const width = Math.min(availW, availH * (d.w / d.h));
-    const wrap = $('#canvas-wrap');
-    wrap.style.width = Math.max(120, width) + 'px';
+    $('#canvas-wrap').style.width = Math.max(100, width) + 'px';
     renderBoxes();
-    renderList();
+    renderGallery();
   }
 
   function renderBoxes() {
     const page = active();
+    if (!page) return;
     const ov = $('#overlay');
     ov.innerHTML = '';
+    ov.style.pointerEvents = state.manual ? 'auto' : 'none';
     const d = page.deskewed;
-    page.boxes.forEach((b, i) => {
-      const n = el('div', 'box' + (state.selected === b.id ? ' sel' : ''));
+    page.boxes.forEach(b => {
+      const n = el('div', 'box' + (state.selected === b.id ? ' sel' : '') +
+                             (b.selected === false ? ' off' : ''));
       n.style.left = (100 * b.x / d.w) + '%';
       n.style.top = (100 * b.y / d.h) + '%';
       n.style.width = (100 * b.w / d.w) + '%';
       n.style.height = (100 * b.h / d.h) + '%';
       n.dataset.id = b.id;
-      n.appendChild(el('span', 'tag', nameFor(page, b, i)));
-      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(k => {
-        const h = el('div', 'h ' + k);
-        h.dataset.handle = k;
-        n.appendChild(h);
-      });
+      n.appendChild(el('span', 'tag', nameFor(page, b)));
+      if (state.manual) {
+        ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(k => {
+          const h = el('div', 'h ' + k);
+          h.dataset.handle = k;
+          n.appendChild(h);
+        });
+      }
       ov.appendChild(n);
     });
   }
 
   /* Numbering runs across every loaded page, so three photos of one exercise
-     give a single q01..q20 sequence. */
+     give a single q01..q20 sequence. A question number read off the page wins,
+     since that is what the teacher will be typing next to it. */
   function figureIndex(page, box) {
     let n = 0;
     for (const p of state.pages) {
@@ -298,61 +303,226 @@
   }
   function nameFor(page, box) {
     if (box.label) return box.label;
+    if (box.question) return state.settings.prefix + box.question.padStart(2, '0');
     return state.settings.prefix + String(figureIndex(page, box)).padStart(2, '0');
   }
 
-  function renderList() {
+  /* ---------- the gallery: pick figures, then shape them ---------- */
+
+  function renderGallery() {
     const page = active();
-    const list = $('#fig-list');
-    list.innerHTML = '';
-    $('#fig-count').textContent = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    const wrap = $('#gallery');
+    wrap.innerHTML = '';
+    const total = state.pages.reduce((n, p) => n + p.boxes.length, 0);
+    $('#fig-count').textContent = total;
+    if (!page) return;
+
     if (!page.boxes.length) {
-      list.appendChild(el('div', 'empty', 'ยังไม่พบรูปในหน้านี้ ลากกรอบสี่เหลี่ยมคลุมรูปที่ต้องการ'));
+      const empty = el('div', 'gallery-empty');
+      empty.textContent = page.searched
+        ? 'ไม่พบรูปมุมในหน้านี้ — เปิด “เพิ่มกรอบเองได้” แล้วลากกรอบคลุมรูปที่ต้องการ'
+        : 'ใส่ Gemini API key แล้วกด “ค้นหารูปใหม่” เพื่อให้ AI หารูปมุมในหน้านี้';
+      wrap.appendChild(empty);
       return;
     }
-    page.boxes.forEach(b => {
-      const row = el('div', 'fig' + (state.selected === b.id ? ' sel' : ''));
-      row.appendChild(previewCanvas(page, b));
-      const name = el('div', 'name');
-      const input = el('input');
-      input.value = nameFor(page, b);
-      input.onchange = () => {
-        b.label = AM.util.sanitizeName(input.value, '');
-        input.value = nameFor(page, b);
-        renderBoxes();
-      };
-      input.onclick = ev => ev.stopPropagation();
-      name.appendChild(input);
-      row.appendChild(name);
-      let dl;
-      if (b.url) {
-        /* A real href, set before the tap. No await stands between the user's
-           finger and the download starting. */
-        dl = el('a', 'dl', '↓');
-        dl.href = b.url;
-        dl.download = AM.util.sanitizeName(nameFor(page, b), 'figure') + '.png';
-        dl.title = 'ดาวน์โหลดรูปนี้';
-        dl.onclick = ev => ev.stopPropagation();
+
+    page.boxes.forEach(box => {
+      const card = el('div', 'card' + (box.selected === false ? ' off' : ''));
+
+      const head = el('label', 'card-head');
+      const tick = el('input');
+      tick.type = 'checkbox';
+      tick.checked = box.selected !== false;
+      tick.onchange = () => { box.selected = tick.checked; renderGallery(); renderBoxes(); };
+      head.appendChild(tick);
+      head.appendChild(el('span', 'card-name', nameFor(page, box)));
+      const st = el('span', 'card-state ' + (box.figure ? 'done' : box.reading ? 'busy' : ''));
+      st.textContent = box.figure ? 'แก้ค่าได้' : box.reading ? 'กำลังอ่าน…' : 'ยังไม่ได้อ่าน';
+      head.appendChild(st);
+      card.appendChild(head);
+
+      const body = el('div', 'card-body');
+      const crop = el('figure', 'card-crop');
+      crop.appendChild(el('figcaption', null, 'ต้นฉบับ'));
+      if (box.url) {
+        const img = el('img');
+        img.src = box.url;
+        img.alt = '';
+        crop.appendChild(img);
       } else {
-        dl = el('span', 'dl waiting', '·••');
-        dl.title = 'กำลังเตรียมไฟล์';
-        dl.onclick = ev => {
-          ev.stopPropagation();
-          toast('กำลังเตรียมไฟล์รูปนี้อยู่ รอสักครู่แล้วลองใหม่', 3000);
-        };
+        crop.appendChild(previewCanvas(page, box));
       }
-      row.appendChild(dl);
-      row.onclick = () => { state.selected = b.id; renderBoxes(); renderList(); };
-      list.appendChild(row);
+      body.appendChild(crop);
+
+      if (box.figure) {
+        const built = el('figure', 'card-built');
+        built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อขยับเส้น'));
+        const holder = el('div', 'svg-holder');
+        holder.innerHTML = AM.svg.render(box.figure, { width: 300, interactive: true });
+        attachPointDrag(holder, page, box);
+        built.appendChild(holder);
+        body.appendChild(built);
+      }
+      card.appendChild(body);
+
+      if (box.figure) {
+        card.appendChild(angleEditor(page, box));
+        for (const c of box.figure.conflicts || []) {
+          const d = el('div', 'conflict');
+          d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายอ่านได้ ' + c.claimed +
+            '° แต่รูปวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
+            ' — เทียบกับต้นฉบับก่อนใช้';
+          card.appendChild(d);
+        }
+        if (box.figure.notes) {
+          card.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + box.figure.notes));
+        }
+        const actions = el('div', 'row');
+        const dl = el('button', 'primary', 'ดาวน์โหลด SVG');
+        dl.onclick = () => downloadSvg(page, box);
+        actions.appendChild(dl);
+        const again = el('button', 'ghost', 'อ่านใหม่');
+        again.onclick = () => readWithAI(page, box);
+        actions.appendChild(again);
+        card.appendChild(actions);
+      }
+      wrap.appendChild(card);
     });
   }
 
+  /* Every angle the figure knows about, as an editable value. Typing a number
+     re-solves the whole figure, so the drawing and the label cannot disagree. */
+  function angleEditor(page, box) {
+    const fig = box.figure;
+    const wrap = el('div', 'angles');
+    fig.angles.forEach((a, i) => {
+      const row = el('label', 'angle-row');
+      row.appendChild(el('span', 'angle-at', 'มุมที่ ' + a.vertex));
+      const input = el('input');
+      input.type = 'text';
+      input.value = a.label || '';
+      input.placeholder = 'เช่น 82° หรือ x';
+      input.onchange = () => setAngleLabel(page, box, i, input.value);
+      row.appendChild(input);
+      const measured = AM.geometry.measure(fig, a);
+      row.appendChild(el('span', 'angle-measured',
+                         measured === null ? '' : Math.round(measured * 10) / 10 + '°'));
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function constraintFor(fig, angle) {
+    return fig.constraints.find(c => c.type === 'angle' && c.vertex === angle.vertex &&
+                                     c.from === angle.from && c.to === angle.to);
+  }
+
+  function setAngleLabel(page, box, index, text) {
+    const fig = box.figure;
+    const angle = fig.angles[index];
+    angle.label = text;
+    const value = AM.extract.numericLabel(text);
+    let c = constraintFor(fig, angle);
+    if (value === null) {
+      /* "x" or "x + 50°" is a caption, not a measurement — stop driving the
+         geometry from it and leave the drawing where it is. */
+      if (c) c.enabled = false;
+    } else {
+      if (!c) {
+        c = { type: 'angle', vertex: angle.vertex, from: angle.from, to: angle.to, value: value };
+        fig.constraints.push(c);
+        AM.geometry.captureSigns(fig);
+      }
+      c.value = value;
+      c.enabled = true;
+      c.suspect = false;
+      const r = AM.geometry.solve(fig);
+      if (!r.ok) {
+        toast('ค่ามุมชุดนี้ขัดกันเอง รูปจึงยังไม่ตรงทุกมุม', 6000);
+      }
+      fig.conflicts = (fig.conflicts || []).filter(x => x.vertex !== angle.vertex);
+    }
+    invalidateBox(box);
+    schedulePrepare();
+    renderGallery();
+  }
+
+  /* Dragging a point is the other half of customising: it changes the lines
+     themselves. The dragged point is pinned while the solver settles the rest,
+     so the constraints still hold when the finger lifts. */
+  function attachPointDrag(holder, page, box) {
+    const svg = holder.querySelector('svg');
+    if (!svg) return;
+    svg.addEventListener('pointerdown', ev => {
+      const target = ev.target;
+      const id = target && target.dataset ? target.dataset.point : null;
+      if (!id) return;
+      ev.preventDefault();
+      svg.setPointerCapture(ev.pointerId);
+      const fig = box.figure;
+      const b = AM.geometry.bounds(fig);
+      const rect = svg.getBoundingClientRect();
+      const vb = svg.viewBox.baseVal;
+      const pad = 46;
+      const scale = (vb.width - pad * 2) / b.w;
+      const toFigure = e => ({
+        x: b.x + ((e.clientX - rect.left) / rect.width * vb.width - pad) / scale,
+        y: b.y + ((e.clientY - rect.top) / rect.height * vb.height - pad) / scale
+      });
+      const point = fig.points[id];
+      const wasFixed = point.fixed;
+      const move = e => {
+        const p = toFigure(e);
+        point.x = p.x; point.y = p.y;
+        point.fixed = true;
+        AM.geometry.solve(fig);
+        point.fixed = wasFixed;
+        holder.innerHTML = AM.svg.render(fig, { width: 300, interactive: true });
+        attachPointDrag(holder, page, box);
+      };
+      const up = () => {
+        svg.removeEventListener('pointermove', move);
+        svg.removeEventListener('pointerup', up);
+        invalidateBox(box);
+        schedulePrepare();
+        renderGallery();
+      };
+      svg.addEventListener('pointermove', move);
+      svg.addEventListener('pointerup', up);
+    });
+  }
+
+  function downloadSvg(page, box) {
+    const svg = AM.svg.render(box.figure, { width: 640 });
+    saveBytes(new TextEncoder().encode(svg),
+              AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
+  }
+
+  function downloadAllSvg() {
+    const entries = [];
+    const taken = new Set();
+    for (const p of state.pages) {
+      for (const b of p.boxes) {
+        if (!b.figure || b.selected === false) continue;
+        const name = AM.util.uniqueName(
+          AM.util.sanitizeName(nameFor(p, b), 'figure') + '.svg', taken);
+        entries.push({ name, data: new TextEncoder().encode(AM.svg.render(b.figure, { width: 640 })) });
+      }
+    }
+    if (!entries.length) { toast('ยังไม่มีรูปที่อ่านแล้ว กด “อ่านมุมที่เลือก” ก่อน', 5000); return; }
+    const stem = AM.util.sanitizeName(state.settings.prefix || 'figures', 'figures')
+      .replace(/[^\x20-\x7E]/g, '') || 'figures';
+    saveBytes(AM.zip.makeZip(entries), stem + '-svg.zip', 'application/zip');
+  }
+
+  const renderList = renderGallery;
+
   /* Previews come from the analysis-scale page, so nothing at full resolution
-     has to be decoded just to draw a 54px thumbnail. */
+     has to be decoded just to draw a thumbnail. */
   function previewCanvas(page, box) {
     const d = page.deskewed;
     const c = el('canvas');
-    c.width = 108; c.height = 76;
+    c.width = 240; c.height = 170;
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     const src = grayToCanvas(d.gray, d.w, d.h);
@@ -690,45 +860,84 @@
   async function readWithAI(page, box) {
     const key = getKey();
     if (!key) { toast('ใส่ Gemini API key ก่อน', 4000); return; }
-    status('กำลังอ่านรูปด้วย Gemini…');
+    box.reading = true;
+    renderGallery();
     try {
       if (!box.png) box.png = await renderFigure(page, box);
-      /* The cleaned, deskewed crop is what goes to the model — the same image
-         that would have been pasted into Word. */
+      /* The cleaned, deskewed crop is what the model sees — the same image that
+         would otherwise have been pasted into Word. */
       const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
       AM.geometry.solve(fig);
       box.figure = fig;
-      showComparison(page, box);
     } catch (e) {
-      toast('อ่านรูปไม่สำเร็จ: ' + (e && e.message), 9000);
+      toast('อ่านรูป ' + nameFor(page, box) + ' ไม่สำเร็จ: ' + (e && e.message), 9000);
       if (e && e.raw) console.warn('Gemini response:', e.raw);
+    }
+    box.reading = false;
+    renderGallery();
+  }
+
+  async function readSelected() {
+    const page = active();
+    if (!page) return;
+    const list = page.boxes.filter(b => b.selected !== false && !b.figure);
+    if (!list.length) { toast('ไม่มีรูปที่เลือกไว้และยังไม่ได้อ่าน', 4000); return; }
+    for (let i = 0; i < list.length; i++) {
+      status('กำลังอ่านมุม ' + (i + 1) + ' จาก ' + list.length + '…');
+      await readWithAI(page, list[i]);
     }
     status(null);
   }
 
-  function showComparison(page, box) {
-    const fig = box.figure;
-    $('#compare-crop').src = box.url || '';
-    $('#compare-svg').innerHTML = AM.svg.render(fig, { width: 380 });
-    const notes = $('#compare-notes');
-    notes.innerHTML = '';
-    for (const c of fig.conflicts || []) {
-      const d = el('div', 'conflict');
-      d.textContent = 'มุมที่จุด ' + c.vertex + ': ป้ายเขียนว่า ' + c.claimed +
-        '° แต่รูปที่วาดวัดได้ ' + (c.drawn === null ? 'ไม่ทราบ' : c.drawn + '°') +
-        ' — ตรวจกับต้นฉบับก่อนใช้';
-      notes.appendChild(d);
+  /* The deskewed page as base64, small enough to keep the request cheap and
+     large enough that a 30px angle label survives. */
+  function pageBase64(page, maxWidth) {
+    const d = page.deskewed;
+    const src = grayToCanvas(d.gray, d.w, d.h);
+    const scale = Math.min(1, (maxWidth || 1100) / Math.max(d.w, d.h));
+    const c = el('canvas');
+    c.width = Math.round(d.w * scale);
+    c.height = Math.round(d.h * scale);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    return c.toDataURL('image/png').split(',')[1];
+  }
+
+  /* Detection is the model's job now. The offline detector still runs first so
+     something is on screen immediately and the app is not useless without a
+     key, but where a key exists the model's reading replaces it. */
+  async function findWithAI(page) {
+    const key = getKey();
+    if (!key) return;
+    status('กำลังให้ AI หารูปมุมในหน้านี้…');
+    try {
+      const d = page.deskewed;
+      const boxes = await AM.extract.findFigures(pageBase64(page, 1100), key,
+                                                 { width: d.w, height: d.h });
+      if (boxes.length) {
+        for (const b of page.boxes) invalidateBox(b);
+        page.boxes = boxes.map(b => {
+          const box = makeBox(b, false);
+          box.question = b.question || '';
+          box.selected = true;
+          return box;
+        });
+        sortBoxes(page);
+      } else {
+        toast('AI ไม่พบรูปมุมในหน้านี้', 6000);
+      }
+      page.searched = true;
+    } catch (e) {
+      toast('ค้นหารูปไม่สำเร็จ: ' + (e && e.message), 9000);
+      if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
-    if (!(fig.conflicts || []).length) {
-      notes.appendChild(el('div', 'ok-note', 'ตัวเลขบนป้ายกับรูปที่วาดตรงกันทุกมุม'));
-    }
-    if (fig.notes) notes.appendChild(el('div', 'ok-note', 'หมายเหตุจาก AI: ' + fig.notes));
-    $('#compare-svg-dl').onclick = () => {
-      const svg = AM.svg.render(fig, { width: 640 });
-      saveBytes(new TextEncoder().encode(svg),
-                AM.util.sanitizeName(nameFor(page, box), 'figure') + '.svg', 'image/svg+xml');
-    };
-    $('#compare').hidden = false;
+    status(null);
+    renderPages();
+    renderAll();
+    schedulePrepare(0);
   }
 
   /* ---------- controls ---------- */
@@ -739,25 +948,27 @@
     const deg = page.angle * 180 / Math.PI;
     $('#in-angle').value = deg.toFixed(1);
     $('#out-angle').textContent = deg.toFixed(1) + '°';
-    const th = page.textHeightOverride || 0;
-    $('#in-th').value = th;
-    $('#out-th').textContent = th ? th + ' พิกเซล'
-      : 'อัตโนมัติ (' + (page.autoTextHeight || 0) + ' พิกเซล)';
+
   }
 
   function initControls() {
     $('#btn-add').onclick = $('#btn-add2').onclick = () => $('#file-input').click();
     $('#file-input').onchange = ev => { addFiles(ev.target.files); ev.target.value = ''; };
     $('#btn-demo').onclick = addDemo;
-    $('#btn-redetect').onclick = () => processActive(true);
-    $('#btn-clear').onclick = () => {
-      const page = active();
-      if (!page) return;
-      pushUndo();
-      for (const b of page.boxes) invalidateBox(b);
-      page.boxes = [];
-      renderBoxes(); renderList(); renderPages(); updateZipButton();
+    $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
+    $('#btn-read').onclick = readSelected;
+    $('#btn-svg-all').onclick = downloadAllSvg;
+    $('#btn-all').onclick = () => {
+      const p = active(); if (!p) return;
+      p.boxes.forEach(b => { b.selected = true; });
+      renderGallery(); renderBoxes();
     };
+    $('#btn-none').onclick = () => {
+      const p = active(); if (!p) return;
+      p.boxes.forEach(b => { b.selected = false; });
+      renderGallery(); renderBoxes();
+    };
+    $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
     $('#btn-zip').onclick = exportZip;
 
     syncKeyPanel();
@@ -777,8 +988,6 @@
       if (!box) { toast('เลือกรูปที่ต้องการก่อน', 3000); return; }
       readWithAI(page, box);
     };
-    $('#compare-close').onclick = () => { $('#compare').hidden = true; };
-    $('#compare').onclick = ev => { if (ev.target.id === 'compare') $('#compare').hidden = true; };
 
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
@@ -788,18 +997,6 @@
       page.angleForced = true;
       page.angle = +angle.value * Math.PI / 180;
       fullRes = null;
-      processActive(true);
-    };
-
-    const th = $('#in-th');
-    th.oninput = () => {
-      $('#out-th').textContent = +th.value ? th.value + ' พิกเซล'
-        : 'อัตโนมัติ (' + ((active() || {}).autoTextHeight || 0) + ' พิกเซล)';
-    };
-    th.onchange = () => {
-      const page = active();
-      if (!page) return;
-      page.textHeightOverride = +th.value || 0;
       processActive(true);
     };
 
@@ -843,7 +1040,8 @@
 
   /* A small handle for scripting and for the test pass; the UI does not use it. */
   AM.app = { state, active, renderFigure, exportOne, exportZip, addDemo, processActive, nameFor,
-             readWithAI, showComparison, getKey, bytesToBase64 };
+             readWithAI, readSelected, findWithAI, downloadSvg, downloadAllSvg,
+             setAngleLabel, renderGallery, getKey, bytesToBase64, pageBase64 };
 
   initControls();
   initEditing();

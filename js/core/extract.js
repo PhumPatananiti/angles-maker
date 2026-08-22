@@ -68,6 +68,122 @@
     required: ['points', 'lines', 'angles']
   };
 
+  /* Finding the figures on a page. Kept as its own call from reading one
+     figure's geometry: asking for both at once means twenty diagrams parsed in
+     a single pass, and the ones near the bottom of the page suffer for it. */
+  const FIND_PROMPT = [
+    'This is one page of a Thai mathematics workbook, already straightened and cleaned.',
+    'Find every geometry DIAGRAM on the page — the drawings made of straight lines, angles,',
+    'triangles and polygons that belong to the questions.',
+    '',
+    'Return one entry per diagram, with a bounding box on a 0-1000 grid measured over the whole',
+    'image, x to the right and y downward. The box must contain the whole drawing including any',
+    'letters and angle values printed on it, and must NOT contain the question sentence above it',
+    'or the multiple-choice answers beside it.',
+    '',
+    'question is the printed question number the diagram belongs to, as digits, when one is',
+    'visible near it; otherwise an empty string.',
+    '',
+    'Ignore running text, headings, page numbers, decorative rules, clip-art icons and anything',
+    'faintly showing through from the other side of the paper.'
+  ].join('\n');
+
+  const FIND_SCHEMA = {
+    type: 'object',
+    properties: {
+      figures: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            question: { type: 'string' },
+            x: { type: 'number' }, y: { type: 'number' },
+            width: { type: 'number' }, height: { type: 'number' }
+          },
+          required: ['x', 'y', 'width', 'height']
+        }
+      }
+    },
+    required: ['figures']
+  };
+
+  function buildFindRequest(base64, options) {
+    const o = options || {};
+    return {
+      model: o.model || MODEL,
+      input: [
+        { type: 'text', text: o.prompt || FIND_PROMPT },
+        { type: 'image', data: base64, mime_type: o.mimeType || 'image/png' }
+      ],
+      response_format: { type: 'text', mime_type: 'application/json', schema: FIND_SCHEMA }
+    };
+  }
+
+  function parseFindResponse(body) {
+    const seen = [];
+    const walk = node => {
+      if (typeof node === 'string') { seen.push(node); return; }
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (node && typeof node === 'object') { for (const k in node) walk(node[k]); }
+    };
+    walk(body);
+    for (const s of seen) {
+      const t = s.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+      if (t[0] !== '{') continue;
+      try {
+        const parsed = JSON.parse(t);
+        if (parsed && Array.isArray(parsed.figures)) return parsed;
+      } catch (e) { /* keep looking */ }
+    }
+    if (body && Array.isArray(body.figures)) return body;
+    const err = new Error('ไม่พบรูปในคำตอบของ Gemini');
+    err.raw = JSON.stringify(body).slice(0, 1200);
+    throw err;
+  }
+
+  /* 0-1000 grid to pixels, with the boxes sorted into reading order and any
+     nonsense dropped rather than handed on. */
+  function toBoxes(found, width, height, options) {
+    const o = Object.assign({ minSide: 0.02, maxArea: 0.7, pad: 0.02 }, options || {});
+    const out = [];
+    for (const f of (found && found.figures) || []) {
+      const x = (+f.x || 0) / 1000 * width, y = (+f.y || 0) / 1000 * height;
+      const w = (+f.width || 0) / 1000 * width, h = (+f.height || 0) / 1000 * height;
+      if (!(w > 0 && h > 0)) continue;
+      if (w < o.minSide * width && h < o.minSide * height) continue;
+      if (w * h > o.maxArea * width * height) continue;
+      const pad = Math.round(o.pad * Math.max(w, h));
+      const x0 = Math.max(0, Math.round(x - pad)), y0 = Math.max(0, Math.round(y - pad));
+      out.push({
+        x: x0, y: y0,
+        w: Math.min(width, Math.round(x + w + pad)) - x0,
+        h: Math.min(height, Math.round(y + h + pad)) - y0,
+        question: (f.question || '').replace(/[^\d]/g, '')
+      });
+    }
+    return AM.detect ? AM.detect.readingOrder(out) : out;
+  }
+
+  async function findFigures(base64, apiKey, options) {
+    if (!apiKey) throw new Error('ยังไม่ได้ใส่ Gemini API key');
+    const o = options || {};
+    const res = await fetch(o.endpoint || ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(buildFindRequest(base64, o)),
+      signal: o.signal
+    });
+    let body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      const err = new Error(describeError(res.status, body));
+      err.status = res.status;
+      err.raw = body ? JSON.stringify(body).slice(0, 1200) : '';
+      throw err;
+    }
+    return toBoxes(parseFindResponse(body), o.width || 1000, o.height || 1000, o);
+  }
+
   function buildRequest(base64, options) {
     const o = options || {};
     return {
@@ -205,5 +321,6 @@
   }
 
   AM.extract = { readFigure, buildRequest, parseResponse, toFigure, numericLabel,
-                 describeError, PROMPT, SCHEMA, MODEL, ENDPOINT };
+                 findFigures, buildFindRequest, parseFindResponse, toBoxes,
+                 describeError, PROMPT, SCHEMA, FIND_PROMPT, FIND_SCHEMA, MODEL, ENDPOINT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
