@@ -158,6 +158,28 @@ const gallery = [];
         'lengths ' + lines.map(L => Math.round(L)).join(', ') + ' in a 340px box');
 }
 
+/* Word reads a unitless SVG width as pixels at 96dpi, so a 640px drawing
+   arrives 6.7 inches across and swallows the page. The exported file states a
+   real physical size while keeping the viewBox, so it still scales cleanly. */
+console.log('\nexported size');
+{
+  const fig = transversal(82);
+  G.solve(fig);
+  const out = AM.svg.render(fig, { width: 640, widthMm: 76 });
+  const head = out.slice(0, out.indexOf('>') + 1);
+  const w = parseFloat((head.match(/width="([\d.]+)mm"/) || [])[1]);
+  const h = parseFloat((head.match(/height="([\d.]+)mm"/) || [])[1]);
+  const vb = head.match(/viewBox="0 0 (\d+) (\d+)"/);
+  check('states a physical width in millimetres', w === 76,
+        (w / 25.4).toFixed(2) + ' inches wide in Word');
+  check('aspect ratio matches the viewBox',
+        !!vb && Math.abs((w / h) - (+vb[1] / +vb[2])) < 0.01,
+        w + 'x' + h + 'mm against viewBox ' + (vb && vb[1] + 'x' + vb[2]));
+  check('keeps the viewBox, so it still scales without blurring', !!vb);
+  check('the on-screen render is left in pixels',
+        /width="640"/.test(AM.svg.render(fig, { width: 640 }).slice(0, 300)));
+}
+
 const html = '<!doctype html><meta charset="utf-8"><title>figures</title>' +
   '<body style="font:14px -apple-system;background:#f6f6f4;padding:20px">' +
   gallery.map(([t, s]) => '<figure style="background:#fff;border:1px solid #ddd;border-radius:8px;' +
