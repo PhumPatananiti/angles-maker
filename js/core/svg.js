@@ -45,7 +45,9 @@
   function render(figure, options) {
     const o = Object.assign({}, DEFAULTS, options || {});
     const G = AM.geometry;
-    const b = G.bounds(figure);
+    /* A caller may pin the bounds — during a drag the figure must not rescale
+       under the finger, or the point runs away from the pointer. */
+    const b = o.bounds || G.bounds(figure);
 
     const scale = (o.width - o.padding * 2) / b.w;
     const height = Math.round(b.h * scale + o.padding * 2);
@@ -83,6 +85,13 @@
       }
       out.push('<line x1="' + f(from.x) + '" y1="' + f(from.y) + '" x2="' + f(to.x) +
                '" y2="' + f(to.y) + '" stroke="' + o.color + '" stroke-width="' + o.stroke + '"/>');
+      if (o.interactive) {
+        /* An invisible fat line over the thin one: a 2px stroke is not something
+           a finger can find. */
+        out.push('<line x1="' + f(from.x) + '" y1="' + f(from.y) + '" x2="' + f(to.x) +
+                 '" y2="' + f(to.y) + '" stroke="transparent" stroke-width="18"' +
+                 ' data-line="' + esc(l.id) + '" style="cursor:move"/>');
+      }
 
       const ang = Math.atan2(to.y - from.y, to.x - from.x);
       const arrows = l.arrows || (kind === 'line' ? 'both' : kind === 'ray' ? 'end' : 'none');
@@ -158,10 +167,12 @@
         if (pt.show === false) continue;
         const p = P(id);
         out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' +
-                 (o.interactive ? Math.max(o.pointRadius, 7) : o.pointRadius) +
-                 '" fill="' + o.color + '"' +
-                 (o.interactive ? ' data-point="' + esc(id) + '" class="pt"' +
-                                  ' fill-opacity="0.9" style="cursor:grab"' : '') + '/>');
+                 (o.interactive ? Math.max(o.pointRadius, 5) : o.pointRadius) +
+                 '" fill="' + o.color + '"/>');
+        if (o.interactive) {
+          out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="15" fill="transparent"' +
+                   ' data-point="' + esc(id) + '" style="cursor:grab"/>');
+        }
         const label = pt.label === undefined ? id : pt.label;
         if (label) {
           /* Push the name away from the middle of the figure so it never lands

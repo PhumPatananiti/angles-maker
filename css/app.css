@@ -186,10 +186,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); min-height: 44px; 
 
 /* ---- step 2: page view + boxes ---- */
 .page-view { background: var(--stage); border-radius: var(--r-lg); padding: var(--s3);
-  display: flex; justify-content: center; min-height: 280px; max-height: 62vh; overflow: auto; }
-.canvas-wrap { position: relative; line-height: 0; }
-.canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
-  border-radius: 2px; box-shadow: 0 2px 18px #0006; }
+  display: flex; justify-content: center; align-items: flex-start; overflow: auto;
+  scrollbar-gutter: stable; }
+/* The canvas sizes itself from its own intrinsic ratio against these two caps.
+   Computing a pixel width in JS from clientWidth shrank it a little more on
+   every re-render, because the scrollbar changes what clientWidth reports. */
+.canvas-wrap { position: relative; line-height: 0; max-width: 100%; }
+.canvas-wrap canvas { display: block; background: #fff; border-radius: 2px;
+  box-shadow: 0 2px 18px #0006; width: auto; height: auto;
+  max-width: 100%; max-height: min(60vh, 660px); }
 .overlay { position: absolute; inset: 0; touch-action: none; -webkit-user-select: none; user-select: none; }
 .box { position: absolute; border: 2px solid var(--accent); background: #2563EB14; cursor: move; }
 .box.off { opacity: .35; }

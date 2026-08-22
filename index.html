@@ -90,10 +90,18 @@
   <!-- 2 ─ find -->
   <section class="step" data-step="2" hidden>
     <div class="step-head">
-      <h1>AI กำลังหารูปมุมในหน้านี้</h1>
-      <p id="find-status">ปรับหน้าให้ตรง ลบเงา แล้วให้ Gemini ตีกรอบรูปทุกรูป</p>
+      <h1>ตีกรอบรูปมุมที่ต้องการ</h1>
+      <p id="find-status">ลากกรอบรอบรูปมุมที่ต้องการ — เร็วกว่ารอ AI หรือกดปุ่มให้ AI หาให้ก็ได้</p>
     </div>
     <div id="pages-2" class="page-strip" hidden></div>
+    <div class="bar-row">
+      <span class="muted">ลากกรอบรอบรูปที่ต้องการได้เลย</span>
+      <span class="spacer"></span>
+      <button id="btn-find" class="btn ghost sm">
+        <svg class="ico" aria-hidden="true"><use href="#i-sparkle"/></svg>
+        ให้ AI หาให้อัตโนมัติ
+      </button>
+    </div>
     <div id="page-view" class="page-view">
       <div id="canvas-wrap" class="canvas-wrap">
         <canvas id="page-canvas"></canvas>
@@ -107,7 +115,6 @@
         <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
       </label>
       <label class="check"><input id="in-manual" type="checkbox"> ลากกรอบเองบนหน้ากระดาษ (เมื่อ AI มองข้ามรูป)</label>
-      <button id="btn-find" class="btn ghost sm">ให้ AI ค้นหาใหม่</button>
     </details>
   </section>
 

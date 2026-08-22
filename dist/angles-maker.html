@@ -198,10 +198,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); min-height: 44px; 
 
 /* ---- step 2: page view + boxes ---- */
 .page-view { background: var(--stage); border-radius: var(--r-lg); padding: var(--s3);
-  display: flex; justify-content: center; min-height: 280px; max-height: 62vh; overflow: auto; }
-.canvas-wrap { position: relative; line-height: 0; }
-.canvas-wrap canvas { display: block; width: 100%; height: auto; background: #fff;
-  border-radius: 2px; box-shadow: 0 2px 18px #0006; }
+  display: flex; justify-content: center; align-items: flex-start; overflow: auto;
+  scrollbar-gutter: stable; }
+/* The canvas sizes itself from its own intrinsic ratio against these two caps.
+   Computing a pixel width in JS from clientWidth shrank it a little more on
+   every re-render, because the scrollbar changes what clientWidth reports. */
+.canvas-wrap { position: relative; line-height: 0; max-width: 100%; }
+.canvas-wrap canvas { display: block; background: #fff; border-radius: 2px;
+  box-shadow: 0 2px 18px #0006; width: auto; height: auto;
+  max-width: 100%; max-height: min(60vh, 660px); }
 .overlay { position: absolute; inset: 0; touch-action: none; -webkit-user-select: none; user-select: none; }
 .box { position: absolute; border: 2px solid var(--accent); background: #2563EB14; cursor: move; }
 .box.off { opacity: .35; }
@@ -406,10 +411,18 @@ a.btn { text-decoration: none; }
   <!-- 2 ─ find -->
   <section class="step" data-step="2" hidden>
     <div class="step-head">
-      <h1>AI กำลังหารูปมุมในหน้านี้</h1>
-      <p id="find-status">ปรับหน้าให้ตรง ลบเงา แล้วให้ Gemini ตีกรอบรูปทุกรูป</p>
+      <h1>ตีกรอบรูปมุมที่ต้องการ</h1>
+      <p id="find-status">ลากกรอบรอบรูปมุมที่ต้องการ — เร็วกว่ารอ AI หรือกดปุ่มให้ AI หาให้ก็ได้</p>
     </div>
     <div id="pages-2" class="page-strip" hidden></div>
+    <div class="bar-row">
+      <span class="muted">ลากกรอบรอบรูปที่ต้องการได้เลย</span>
+      <span class="spacer"></span>
+      <button id="btn-find" class="btn ghost sm">
+        <svg class="ico" aria-hidden="true"><use href="#i-sparkle"/></svg>
+        ให้ AI หาให้อัตโนมัติ
+      </button>
+    </div>
     <div id="page-view" class="page-view">
       <div id="canvas-wrap" class="canvas-wrap">
         <canvas id="page-canvas"></canvas>
@@ -423,7 +436,6 @@ a.btn { text-decoration: none; }
         <input id="in-angle" type="range" min="-10" max="10" step="0.1" value="0">
       </label>
       <label class="check"><input id="in-manual" type="checkbox"> ลากกรอบเองบนหน้ากระดาษ (เมื่อ AI มองข้ามรูป)</label>
-      <button id="btn-find" class="btn ghost sm">ให้ AI ค้นหาใหม่</button>
     </details>
   </section>
 
@@ -2117,7 +2129,9 @@ a.btn { text-decoration: none; }
   function render(figure, options) {
     const o = Object.assign({}, DEFAULTS, options || {});
     const G = AM.geometry;
-    const b = G.bounds(figure);
+    /* A caller may pin the bounds — during a drag the figure must not rescale
+       under the finger, or the point runs away from the pointer. */
+    const b = o.bounds || G.bounds(figure);
 
     const scale = (o.width - o.padding * 2) / b.w;
     const height = Math.round(b.h * scale + o.padding * 2);
@@ -2155,6 +2169,13 @@ a.btn { text-decoration: none; }
       }
       out.push('<line x1="' + f(from.x) + '" y1="' + f(from.y) + '" x2="' + f(to.x) +
                '" y2="' + f(to.y) + '" stroke="' + o.color + '" stroke-width="' + o.stroke + '"/>');
+      if (o.interactive) {
+        /* An invisible fat line over the thin one: a 2px stroke is not something
+           a finger can find. */
+        out.push('<line x1="' + f(from.x) + '" y1="' + f(from.y) + '" x2="' + f(to.x) +
+                 '" y2="' + f(to.y) + '" stroke="transparent" stroke-width="18"' +
+                 ' data-line="' + esc(l.id) + '" style="cursor:move"/>');
+      }
 
       const ang = Math.atan2(to.y - from.y, to.x - from.x);
       const arrows = l.arrows || (kind === 'line' ? 'both' : kind === 'ray' ? 'end' : 'none');
@@ -2230,10 +2251,12 @@ a.btn { text-decoration: none; }
         if (pt.show === false) continue;
         const p = P(id);
         out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' +
-                 (o.interactive ? Math.max(o.pointRadius, 7) : o.pointRadius) +
-                 '" fill="' + o.color + '"' +
-                 (o.interactive ? ' data-point="' + esc(id) + '" class="pt"' +
-                                  ' fill-opacity="0.9" style="cursor:grab"' : '') + '/>');
+                 (o.interactive ? Math.max(o.pointRadius, 5) : o.pointRadius) +
+                 '" fill="' + o.color + '"/>');
+        if (o.interactive) {
+          out.push('<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="15" fill="transparent"' +
+                   ' data-point="' + esc(id) + '" style="cursor:grab"/>');
+        }
         const label = pt.label === undefined ? id : pt.label;
         if (label) {
           /* Push the name away from the middle of the figure so it never lands
@@ -2616,7 +2639,7 @@ a.btn { text-decoration: none; }
     activeId: null,
     selected: null,
     undo: [],
-    manual: false,
+    manual: true,
     step: 1,
     figIndex: 0,
     settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
@@ -2753,7 +2776,6 @@ a.btn { text-decoration: none; }
     renderPages();
     if (state.step < 2) goStep(2); else renderStep();
     schedulePrepare(0);
-    if (getKey() && !page.searched) findWithAI(page);
   }
 
   const makeBox = (b, manual) => ({
@@ -2843,6 +2865,7 @@ a.btn { text-decoration: none; }
   /* ---------- the wizard ---------- */
 
   const STEPS = 5;
+  const EDIT_W = 420;          // the editor canvas never changes size mid-edit
   const stepOf = n => document.querySelector('.step[data-step="' + n + '"]');
 
   function canEnter(n) {
@@ -2972,16 +2995,15 @@ a.btn { text-decoration: none; }
     canvas.width = d.w; canvas.height = d.h;
     canvas.getContext('2d').putImageData(
       new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
-    const view = $('#page-view');
-    const availW = view.clientWidth - 24;
-    const availH = Math.max(240, Math.min(window.innerHeight * 0.62, 720) - 24);
-    const width = Math.min(availW, availH * (d.w / d.h));
-    $('#canvas-wrap').style.width = Math.max(100, width) + 'px';
+    /* Sizing is left to CSS. Deriving it from clientWidth ratchets the canvas
+       smaller every re-render, because clientWidth drops when the scrollbar
+       appears and the next render measures the reduced value. */
     const st = $('#find-status');
     const n = page.boxes.length;
     if (page.finding) st.textContent = 'Gemini กำลังตีกรอบรูปทุกรูปในหน้านี้…';
-    else if (!getKey()) st.textContent = 'ยังไม่ได้ใส่ Gemini API key — ใช้การหารูปแบบออฟไลน์แทน พบ ' + n + ' รูป (ใส่คีย์ในขั้นที่ 1 เพื่อให้แม่นขึ้น)';
-    else st.textContent = n ? 'พบ ' + n + ' รูปในหน้านี้ — ตรวจกรอบแล้วกดถัดไป' : 'ไม่พบรูปมุมในหน้านี้ — เปิด “เครื่องมือหน้ากระดาษ” แล้วลากกรอบเอง';
+    else st.textContent = n
+      ? 'ตีกรอบไว้ให้ ' + n + ' รูป — ลากกรอบเพื่อปรับ ลากบนที่ว่างเพื่อเพิ่ม กด ⌫ เพื่อลบ'
+      : 'ลากกรอบรอบรูปมุมที่ต้องการบนหน้ากระดาษ';
     const old = document.querySelector('#find-error');
     if (old) old.remove();
     if (page.lastError) {
@@ -3070,7 +3092,7 @@ a.btn { text-decoration: none; }
     } else if (box.figure) {
       built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อย้ายเส้น'));
       const holder = el('div', 'svg-holder');
-      holder.innerHTML = AM.svg.render(box.figure, { width: 420, interactive: true });
+      holder.innerHTML = AM.svg.render(box.figure, { width: EDIT_W, interactive: true });
       attachPointDrag(holder, page, box);
       built.appendChild(holder);
     } else {
@@ -3263,46 +3285,67 @@ a.btn { text-decoration: none; }
   /* Dragging a point is the other half of customising: it changes the lines
      themselves. The dragged point is pinned while the solver settles the rest,
      so the constraints still hold when the finger lifts. */
+  /* Dragging, for both a point and a whole line.
+     Two things make this work that did not before: the move and up listeners
+     live on the window, so re-drawing the figure cannot destroy the element
+     they are attached to; and the viewBox is frozen for the duration, so the
+     drawing does not rescale under the finger while it is being moved. */
   function attachPointDrag(holder, page, box) {
-    const svg = holder.querySelector('svg');
-    if (!svg) return;
-    svg.addEventListener('pointerdown', ev => {
-      const target = ev.target;
-      const id = target && target.dataset ? target.dataset.point : null;
-      if (!id) return;
-      ev.preventDefault();
-      svg.setPointerCapture(ev.pointerId);
+    holder.onpointerdown = ev => {
+      const data = ev.target && ev.target.dataset ? ev.target.dataset : null;
+      const pointId = data && data.point;
+      const lineId = data && data.line;
+      if (!pointId && !lineId) return;
       const fig = box.figure;
-      const b = AM.geometry.bounds(fig);
+      const svg = holder.querySelector('svg');
+      if (!svg) return;
+      ev.preventDefault();
+
+      const frozen = AM.geometry.bounds(fig);
       const rect = svg.getBoundingClientRect();
       const vb = svg.viewBox.baseVal;
-      const pad = 46;
-      const scale = (vb.width - pad * 2) / b.w;
+      const pad = AM.svg.DEFAULTS.padding;
+      const scale = (vb.width - pad * 2) / frozen.w;
       const toFigure = e => ({
-        x: b.x + ((e.clientX - rect.left) / rect.width * vb.width - pad) / scale,
-        y: b.y + ((e.clientY - rect.top) / rect.height * vb.height - pad) / scale
+        x: frozen.x + ((e.clientX - rect.left) / rect.width * vb.width - pad) / scale,
+        y: frozen.y + ((e.clientY - rect.top) / rect.height * vb.height - pad) / scale
       });
-      const point = fig.points[id];
-      const wasFixed = point.fixed;
+
+      const line = lineId ? AM.geometry.lineById(fig, lineId) : null;
+      const ids = pointId ? [pointId] : (line ? [line.a, line.b] : []);
+      if (!ids.length || ids.some(id => !fig.points[id])) return;
+      const start = toFigure(ev);
+      const origin = ids.map(id => ({ id, x: fig.points[id].x, y: fig.points[id].y }));
+      const wasFixed = ids.map(id => fig.points[id].fixed);
+      let moved = false;
+
       const move = e => {
         const p = toFigure(e);
-        point.x = p.x; point.y = p.y;
-        point.fixed = true;
+        const dx = p.x - start.x, dy = p.y - start.y;
+        if (!moved && Math.hypot(dx, dy) * scale < 3) return;   // ignore a shaky tap
+        moved = true;
+        origin.forEach(o => {
+          fig.points[o.id].x = o.x + dx;
+          fig.points[o.id].y = o.y + dy;
+          fig.points[o.id].fixed = true;
+        });
         AM.geometry.solve(fig);
-        point.fixed = wasFixed;
-        holder.innerHTML = AM.svg.render(fig, { width: 300, interactive: true });
-        attachPointDrag(holder, page, box);
+        ids.forEach((id, i) => { fig.points[id].fixed = wasFixed[i]; });
+        holder.innerHTML = AM.svg.render(fig, { width: EDIT_W, interactive: true, bounds: frozen });
       };
       const up = () => {
-        svg.removeEventListener('pointermove', move);
-        svg.removeEventListener('pointerup', up);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        if (!moved) return;
         invalidateBox(box);
         schedulePrepare();
         renderCustomize();
       };
-      svg.addEventListener('pointermove', move);
-      svg.addEventListener('pointerup', up);
-    });
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+    };
   }
 
   function downloadSvg(page, box) {
@@ -3828,6 +3871,7 @@ a.btn { text-decoration: none; }
     $('#in-key').onkeydown = ev => { if (ev.key === 'Enter') $('#btn-key-save').click(); };
 
     $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
+    $('#in-manual').checked = state.manual;
     $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };

@@ -24,7 +24,7 @@
     activeId: null,
     selected: null,
     undo: [],
-    manual: false,
+    manual: true,
     step: 1,
     figIndex: 0,
     settings: { mode: 'gray', width: 900, bolder: false, prefix: 'q', dpi: 300 }
@@ -161,7 +161,6 @@
     renderPages();
     if (state.step < 2) goStep(2); else renderStep();
     schedulePrepare(0);
-    if (getKey() && !page.searched) findWithAI(page);
   }
 
   const makeBox = (b, manual) => ({
@@ -251,6 +250,7 @@
   /* ---------- the wizard ---------- */
 
   const STEPS = 5;
+  const EDIT_W = 420;          // the editor canvas never changes size mid-edit
   const stepOf = n => document.querySelector('.step[data-step="' + n + '"]');
 
   function canEnter(n) {
@@ -380,16 +380,15 @@
     canvas.width = d.w; canvas.height = d.h;
     canvas.getContext('2d').putImageData(
       new ImageData(AM.image.grayToRGBA(d.gray, d.w, d.h), d.w, d.h), 0, 0);
-    const view = $('#page-view');
-    const availW = view.clientWidth - 24;
-    const availH = Math.max(240, Math.min(window.innerHeight * 0.62, 720) - 24);
-    const width = Math.min(availW, availH * (d.w / d.h));
-    $('#canvas-wrap').style.width = Math.max(100, width) + 'px';
+    /* Sizing is left to CSS. Deriving it from clientWidth ratchets the canvas
+       smaller every re-render, because clientWidth drops when the scrollbar
+       appears and the next render measures the reduced value. */
     const st = $('#find-status');
     const n = page.boxes.length;
     if (page.finding) st.textContent = 'Gemini กำลังตีกรอบรูปทุกรูปในหน้านี้…';
-    else if (!getKey()) st.textContent = 'ยังไม่ได้ใส่ Gemini API key — ใช้การหารูปแบบออฟไลน์แทน พบ ' + n + ' รูป (ใส่คีย์ในขั้นที่ 1 เพื่อให้แม่นขึ้น)';
-    else st.textContent = n ? 'พบ ' + n + ' รูปในหน้านี้ — ตรวจกรอบแล้วกดถัดไป' : 'ไม่พบรูปมุมในหน้านี้ — เปิด “เครื่องมือหน้ากระดาษ” แล้วลากกรอบเอง';
+    else st.textContent = n
+      ? 'ตีกรอบไว้ให้ ' + n + ' รูป — ลากกรอบเพื่อปรับ ลากบนที่ว่างเพื่อเพิ่ม กด ⌫ เพื่อลบ'
+      : 'ลากกรอบรอบรูปมุมที่ต้องการบนหน้ากระดาษ';
     const old = document.querySelector('#find-error');
     if (old) old.remove();
     if (page.lastError) {
@@ -478,7 +477,7 @@
     } else if (box.figure) {
       built.appendChild(el('figcaption', null, 'สร้างใหม่ — ลากจุดเพื่อย้ายเส้น'));
       const holder = el('div', 'svg-holder');
-      holder.innerHTML = AM.svg.render(box.figure, { width: 420, interactive: true });
+      holder.innerHTML = AM.svg.render(box.figure, { width: EDIT_W, interactive: true });
       attachPointDrag(holder, page, box);
       built.appendChild(holder);
     } else {
@@ -671,46 +670,67 @@
   /* Dragging a point is the other half of customising: it changes the lines
      themselves. The dragged point is pinned while the solver settles the rest,
      so the constraints still hold when the finger lifts. */
+  /* Dragging, for both a point and a whole line.
+     Two things make this work that did not before: the move and up listeners
+     live on the window, so re-drawing the figure cannot destroy the element
+     they are attached to; and the viewBox is frozen for the duration, so the
+     drawing does not rescale under the finger while it is being moved. */
   function attachPointDrag(holder, page, box) {
-    const svg = holder.querySelector('svg');
-    if (!svg) return;
-    svg.addEventListener('pointerdown', ev => {
-      const target = ev.target;
-      const id = target && target.dataset ? target.dataset.point : null;
-      if (!id) return;
-      ev.preventDefault();
-      svg.setPointerCapture(ev.pointerId);
+    holder.onpointerdown = ev => {
+      const data = ev.target && ev.target.dataset ? ev.target.dataset : null;
+      const pointId = data && data.point;
+      const lineId = data && data.line;
+      if (!pointId && !lineId) return;
       const fig = box.figure;
-      const b = AM.geometry.bounds(fig);
+      const svg = holder.querySelector('svg');
+      if (!svg) return;
+      ev.preventDefault();
+
+      const frozen = AM.geometry.bounds(fig);
       const rect = svg.getBoundingClientRect();
       const vb = svg.viewBox.baseVal;
-      const pad = 46;
-      const scale = (vb.width - pad * 2) / b.w;
+      const pad = AM.svg.DEFAULTS.padding;
+      const scale = (vb.width - pad * 2) / frozen.w;
       const toFigure = e => ({
-        x: b.x + ((e.clientX - rect.left) / rect.width * vb.width - pad) / scale,
-        y: b.y + ((e.clientY - rect.top) / rect.height * vb.height - pad) / scale
+        x: frozen.x + ((e.clientX - rect.left) / rect.width * vb.width - pad) / scale,
+        y: frozen.y + ((e.clientY - rect.top) / rect.height * vb.height - pad) / scale
       });
-      const point = fig.points[id];
-      const wasFixed = point.fixed;
+
+      const line = lineId ? AM.geometry.lineById(fig, lineId) : null;
+      const ids = pointId ? [pointId] : (line ? [line.a, line.b] : []);
+      if (!ids.length || ids.some(id => !fig.points[id])) return;
+      const start = toFigure(ev);
+      const origin = ids.map(id => ({ id, x: fig.points[id].x, y: fig.points[id].y }));
+      const wasFixed = ids.map(id => fig.points[id].fixed);
+      let moved = false;
+
       const move = e => {
         const p = toFigure(e);
-        point.x = p.x; point.y = p.y;
-        point.fixed = true;
+        const dx = p.x - start.x, dy = p.y - start.y;
+        if (!moved && Math.hypot(dx, dy) * scale < 3) return;   // ignore a shaky tap
+        moved = true;
+        origin.forEach(o => {
+          fig.points[o.id].x = o.x + dx;
+          fig.points[o.id].y = o.y + dy;
+          fig.points[o.id].fixed = true;
+        });
         AM.geometry.solve(fig);
-        point.fixed = wasFixed;
-        holder.innerHTML = AM.svg.render(fig, { width: 300, interactive: true });
-        attachPointDrag(holder, page, box);
+        ids.forEach((id, i) => { fig.points[id].fixed = wasFixed[i]; });
+        holder.innerHTML = AM.svg.render(fig, { width: EDIT_W, interactive: true, bounds: frozen });
       };
       const up = () => {
-        svg.removeEventListener('pointermove', move);
-        svg.removeEventListener('pointerup', up);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        if (!moved) return;
         invalidateBox(box);
         schedulePrepare();
         renderCustomize();
       };
-      svg.addEventListener('pointermove', move);
-      svg.addEventListener('pointerup', up);
-    });
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+    };
   }
 
   function downloadSvg(page, box) {
@@ -1236,6 +1256,7 @@
     $('#in-key').onkeydown = ev => { if (ev.key === 'Enter') $('#btn-key-save').click(); };
 
     $('#btn-find').onclick = () => { const p = active(); if (p) findWithAI(p); };
+    $('#in-manual').checked = state.manual;
     $('#in-manual').onchange = ev => { state.manual = ev.target.checked; renderBoxes(); };
     const angle = $('#in-angle');
     angle.oninput = () => { $('#out-angle').textContent = (+angle.value).toFixed(1) + '°'; };
