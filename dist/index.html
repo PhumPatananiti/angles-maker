@@ -2317,7 +2317,13 @@ a.btn { text-decoration: none; }
     parallelTolerance: 3.5 * Math.PI / 180,
     joinRadius: 9,          // points closer than this are the same point
     maxLines: 14,
-    arcSearch: 2.2          // x the arc radius, how far from a vertex to look for an arc mark
+    lineClear: 3.2,         // px: ink further than this from every stroke is "something else"
+    arcMinRadiusFrac: 0.04, // of the crop diagonal
+    arcMaxRadiusFrac: 0.30,
+    arcMaxRadialSpread: 0.34,  // an arc keeps a near-constant distance from its vertex
+    arcMinSweepDeg: 16,
+    arrowRadius: 16,        // px from a stroke's end within which a head is its own
+    arrowMaxArea: 400
   };
 
   function inkPoints(gray, w, h, o) {
@@ -2455,6 +2461,81 @@ a.btn { text-decoration: none; }
     return t >= -slack && t <= 1 + slack;
   };
 
+  /* Everything that is not one of the straight strokes: the angle arcs, the
+     arrowheads, the printed labels. Thrown away until now, and it is exactly
+     what says WHICH angle the page marks and which strokes carry arrows. */
+  function residual(gray, w, h, segs, o) {
+    const mask = new Uint8Array(w * h);
+    const dist2ToSeg = (x, y, s) => {
+      const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+      const len2 = dx * dx + dy * dy || 1;
+      let t = ((x - s.x1) * dx + (y - s.y1) * dy) / len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = s.x1 + t * dx - x, py = s.y1 + t * dy - y;
+      return px * px + py * py;
+    };
+    const clear2 = o.lineClear * o.lineClear;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (gray[y * w + x] >= o.inkBelow) continue;
+        let near = false;
+        for (let i = 0; i < segs.length && !near; i++) if (dist2ToSeg(x, y, segs[i]) <= clear2) near = true;
+        if (!near) mask[y * w + x] = 1;
+      }
+    }
+    const cc = AM.image.connectedComponents(mask, w, h, null);
+    const parts = [];
+    for (const c of cc.comps) {
+      if (c.area < 8) continue;
+      parts.push(c);
+    }
+    /* pixel lists, so an arc can be measured rather than guessed at */
+    const byId = new Map(parts.map(c => [c.id, { comp: c, xs: [], ys: [] }]));
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const id = cc.labels[y * w + x];
+        if (id < 0) continue;
+        const rec = byId.get(id);
+        if (rec) { rec.xs.push(x); rec.ys.push(y); }
+      }
+    }
+    return Array.from(byId.values());
+  }
+
+  /* An arc holds a near-constant distance from its vertex and sweeps an angle.
+     A printed label does neither, which is what separates them. */
+  function arcAt(part, vx, vy, o, diag) {
+    const { xs, ys } = part;
+    const n = xs.length;
+    if (n < 8) return null;
+    let sum = 0, sum2 = 0, minA = Infinity, maxA = -Infinity;
+    const angles = [];
+    for (let i = 0; i < n; i++) {
+      const dx = xs[i] - vx, dy = ys[i] - vy;
+      const r = Math.hypot(dx, dy);
+      sum += r; sum2 += r * r;
+      angles.push(Math.atan2(dy, dx));
+    }
+    const mean = sum / n;
+    if (mean < o.arcMinRadiusFrac * diag || mean > o.arcMaxRadiusFrac * diag) return null;
+    const sd = Math.sqrt(Math.max(0, sum2 / n - mean * mean));
+    if (sd / mean > o.arcMaxRadialSpread) return null;
+    /* sweep, measured about the circular mean so it does not break at pi */
+    let sx = 0, sy = 0;
+    for (const a of angles) { sx += Math.cos(a); sy += Math.sin(a); }
+    const mid = Math.atan2(sy, sx);
+    for (const a of angles) {
+      let d = a - mid;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      if (d < minA) minA = d;
+      if (d > maxA) maxA = d;
+    }
+    const sweep = (maxA - minA) * 180 / Math.PI;
+    if (sweep < o.arcMinSweepDeg) return null;
+    return { radius: mean, bisector: mid, sweep };
+  }
+
   function traceFigure(gray, w, h, options) {
     const o = Object.assign({}, DEFAULTS, options || {});
     const G = AM.geometry;
@@ -2542,8 +2623,29 @@ a.btn { text-decoration: none; }
       }
     }
 
-    /* An angle at every crossing, with no value: the drawing is recovered, the
-       numbers are for the person reading the original to supply. */
+    /* Which angle does the page actually mark? Whichever one the arc is drawn
+       in. Offering the wrong quadrant is not a cosmetic slip: on this chapter's
+       figures the four angles at a crossing are two different values, and a
+       label typed into the wrong one states a relationship the question does
+       not make. */
+    const parts = residual(gray, w, h, segs, o);
+    const used = new Set();
+
+    /* A point far enough along a line from the vertex to name a direction. */
+    const rayTowards = (line, vertexId, dirX, dirY) => {
+      const v = points.find(p => p.id === vertexId);
+      const ends = [line.a, line.b].map(id => points.find(p => p.id === id));
+      let best = null, bestDot = -Infinity;
+      for (const e of ends) {
+        if (!e || e === v) continue;
+        const dx = e.x - v.x, dy = e.y - v.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const dot = (dx / len) * dirX + (dy / len) * dirY;
+        if (dot > bestDot) { bestDot = dot; best = e; }
+      }
+      return best;
+    };
+
     const seen = new Set();
     for (const c of crossings) {
       const la = 'l' + c.a, lb = 'l' + c.b;
@@ -2552,10 +2654,52 @@ a.btn { text-decoration: none; }
       const key = c.point.id + '|' + la + '|' + lb;
       if (seen.has(key)) continue;
       seen.add(key);
-      const from = A.a === c.point.id ? A.b : A.a;
-      const to = B.a === c.point.id ? B.b : B.a;
-      if (from === c.point.id || to === c.point.id) continue;
-      fig.angles.push({ vertex: c.point.id, from, to, label: '' });
+      const V = c.point;
+
+      let arc = null;
+      for (const part of parts) {
+        if (used.has(part)) continue;
+        const a = arcAt(part, V.x, V.y, o, diag);
+        if (a && (!arc || a.radius < arc.radius)) { arc = a; arc.part = part; }
+      }
+
+      const ua = { x: -Math.sin(segs[c.a].theta), y: Math.cos(segs[c.a].theta) };
+      const ub = { x: -Math.sin(segs[c.b].theta), y: Math.cos(segs[c.b].theta) };
+      let pick = { a: ua, b: ub };
+      if (arc) {
+        used.add(arc.part);
+        const want = { x: Math.cos(arc.bisector), y: Math.sin(arc.bisector) };
+        let bestScore = -Infinity;
+        for (const sa of [1, -1]) {
+          for (const sb of [1, -1]) {
+            const ax = ua.x * sa, ay = ua.y * sa, bx = ub.x * sb, by = ub.y * sb;
+            let mx = ax + bx, my = ay + by;
+            const m = Math.hypot(mx, my) || 1;
+            const score = (mx / m) * want.x + (my / m) * want.y;
+            if (score > bestScore) { bestScore = score; pick = { a: { x: ax, y: ay }, b: { x: bx, y: by } }; }
+          }
+        }
+      }
+      const from = rayTowards(A, V.id, pick.a.x, pick.a.y);
+      const to = rayTowards(B, V.id, pick.b.x, pick.b.y);
+      if (!from || !to || from.id === V.id || to.id === V.id) continue;
+      fig.angles.push({ vertex: V.id, from: from.id, to: to.id, label: '',
+                        fromArc: !!arc });
+    }
+
+    /* Arrowheads at a stroke's ends make it a line or a ray, which is how a
+       textbook draws these and how they should come back out. */
+    for (let i = 0; i < segs.length; i++) {
+      const line = G.lineById(fig, 'l' + i);
+      if (!line) continue;
+      const s = segs[i];
+      const headNear = (x, y) => parts.some(p => !used.has(p) &&
+        p.comp.area <= o.arrowMaxArea &&
+        Math.hypot((p.comp.x0 + p.comp.x1) / 2 - x, (p.comp.y0 + p.comp.y1) / 2 - y) <= o.arrowRadius);
+      const startHead = headNear(s.x1, s.y1), endHead = headNear(s.x2, s.y2);
+      if (startHead && endHead) { line.kind = 'line'; line.arrows = 'both'; }
+      else if (startHead) { line.kind = 'ray'; line.arrows = 'start'; }
+      else if (endHead) { line.kind = 'ray'; line.arrows = 'end'; }
     }
 
     G.captureSigns(fig);
