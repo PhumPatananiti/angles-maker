@@ -2931,6 +2931,27 @@ a.btn { text-decoration: none; }
     return out;
   }
 
+  /* A failure a teacher can act on: what went wrong, and one button that
+     copies the technical detail so it can be pasted to whoever maintains this. */
+  function errorNotice(err, what) {
+    const n = el('div', 'notice warn');
+    n.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg>';
+    const body = el('div');
+    body.appendChild(el('div', null, what + ' ' + err.message));
+    const row = el('div', 'bar-row');
+    const copy = el('button', 'btn ghost sm', 'คัดลอกรายละเอียด');
+    copy.onclick = () => {
+      const text = [what, err.message, err.status ? 'HTTP ' + err.status : '', err.raw].filter(Boolean).join('\n');
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
+        .then(() => toast('คัดลอกแล้ว ส่งข้อความนี้ให้ผู้ดูแลได้เลย', 4000))
+        .catch(() => { prompt('คัดลอกข้อความนี้', text); });
+    };
+    row.appendChild(copy);
+    body.appendChild(row);
+    n.appendChild(body);
+    return n;
+  }
+
   /* ---- step 1 ---- */
   function renderUpload() {
     syncKeyPanel();
@@ -2961,6 +2982,13 @@ a.btn { text-decoration: none; }
     if (page.finding) st.textContent = 'Gemini กำลังตีกรอบรูปทุกรูปในหน้านี้…';
     else if (!getKey()) st.textContent = 'ยังไม่ได้ใส่ Gemini API key — ใช้การหารูปแบบออฟไลน์แทน พบ ' + n + ' รูป (ใส่คีย์ในขั้นที่ 1 เพื่อให้แม่นขึ้น)';
     else st.textContent = n ? 'พบ ' + n + ' รูปในหน้านี้ — ตรวจกรอบแล้วกดถัดไป' : 'ไม่พบรูปมุมในหน้านี้ — เปิด “เครื่องมือหน้ากระดาษ” แล้วลากกรอบเอง';
+    const old = document.querySelector('#find-error');
+    if (old) old.remove();
+    if (page.lastError) {
+      const n2 = errorNotice(page.lastError, 'AI ค้นหารูปไม่สำเร็จ:');
+      n2.id = 'find-error';
+      $('#page-view').insertAdjacentElement('beforebegin', n2);
+    }
     renderBoxes();
   }
 
@@ -3047,6 +3075,7 @@ a.btn { text-decoration: none; }
       built.appendChild(holder);
     } else {
       built.appendChild(el('figcaption', null, 'ยังไม่ได้อ่าน'));
+      if (box.lastError) built.appendChild(errorNotice(box.lastError, 'AI อ่านรูปนี้ไม่สำเร็จ:'));
       const bb = el('div', 'busy-block');
       bb.appendChild(el('span', null, getKey() ? 'รูปนี้ยังไม่ได้ให้ AI อ่าน' : 'ต้องใส่ Gemini API key ในขั้นที่ 1 ก่อน'));
       const b = el('button', 'btn primary sm', 'อ่านรูปนี้ด้วย AI');
@@ -3657,7 +3686,10 @@ a.btn { text-decoration: none; }
       const fig = await AM.extract.readFigure(bytesToBase64(box.png), key);
       AM.geometry.solve(fig);
       box.figure = fig;
+      box.lastError = null;
     } catch (e) {
+      box.lastError = { message: (e && e.message) || String(e), raw: (e && e.raw) || '',
+                        status: e && e.status };
       toast('อ่านรูป ' + nameFor(page, box) + ' ไม่สำเร็จ: ' + (e && e.message), 9000);
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
@@ -3726,7 +3758,10 @@ a.btn { text-decoration: none; }
         toast('AI ไม่พบรูปมุมในหน้านี้', 6000);
       }
       page.searched = true;
+      page.lastError = null;
     } catch (e) {
+      page.lastError = { message: (e && e.message) || String(e), raw: (e && e.raw) || '',
+                         status: e && e.status };
       toast('ค้นหารูปไม่สำเร็จ: ' + (e && e.message), 9000);
       if (e && e.raw) console.warn('Gemini response:', e.raw);
     }
